@@ -1,0 +1,11 @@
+build:
+  name: Preview Build (Android)
+  on:
+    push:
+      branches: ["master"]
+  jobs:
+    build:
+      name: Build Android APK
+      type: managed
+      platform: android
+      profile: preview
