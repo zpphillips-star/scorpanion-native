@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "Scorpanion",
-    "slug": "scorpanion",
-    "owner": "zachphillips",
+    "slug": "z-plot-industries",
+    "owner": "z-plot-industries",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -34,6 +34,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f65e7afe-34d0-456c-8f0e-a69962f0979c"
+      }
     }
   }
 }
