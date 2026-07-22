@@ -47,3 +47,12 @@ export async function fetchTeams(sport?: string) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
+
+export async function fetchTeamDetail(teamId: string, sport?: string) {
+  const params = new URLSearchParams({ teamId });
+  if (sport) params.set('sport', sport);
+  const url = `${API_BASE}/api/team-detail?${params}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,28 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GameCard from '../components/GameCard';
+import GameDetailSheet, { type SheetGame } from '../components/GameDetailSheet';
+import TeamDetailSheet from '../components/TeamDetailSheet';
 import { fetchLiveScores } from '../lib/api';
+import type { SheetTeam } from '../lib/types';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const SPORTS = ['All', 'MLB', 'NBA', 'NFL', 'NHL', 'MLS', 'WNBA'];
+
+/** Polling intervals */
+const LIVE_POLL_MS = 2_000;
+const IDLE_POLL_MS = 30_000;
+
+/** Keywords that indicate a game is currently in progress */
+const LIVE_KEYWORDS = ['progress', 'inning', 'quarter', 'period', 'half', 'live'];
+
+function isGameLive(status: string): boolean {
+  const lower = status?.toLowerCase() ?? '';
+  return LIVE_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+// ─── Normalizer ───────────────────────────────────────────────────────────────
 
 function normalizeGame(game: any) {
   const competitors = game.competitions?.[0]?.competitors || game.competitors || [];
@@ -34,6 +53,23 @@ function normalizeGame(game: any) {
     : inning
     ? `Inning ${inning}`
     : undefined;
+
+  // Game time for scheduled games
+  const rawDate = game.date || game.competitions?.[0]?.date;
+  let gameTime: string | undefined;
+  if (rawDate) {
+    try {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        gameTime = d.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   return {
     gameId: game.id || game.gameId,
@@ -64,8 +100,11 @@ function normalizeGame(game: any) {
     homeScore: home?.score !== undefined ? home.score : undefined,
     status,
     period,
+    gameTime,
   };
 }
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ScoresScreen() {
   const [games, setGames] = useState<any[]>([]);
@@ -73,10 +112,18 @@ export default function ScoresScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedSport, setSelectedSport] = useState('All');
   const [error, setError] = useState<string | null>(null);
+  const [selectedGame, setSelectedGame] = useState<SheetGame | null>(null);
+  const [selectedTeam, setSelectedTeam] = useState<SheetTeam | null>(null);
 
-  const load = useCallback(async () => {
+  /** Current setInterval handle */
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** The delay the current interval was created with – used to detect changes */
+  const currentDelayRef = useRef<number>(IDLE_POLL_MS);
+
+  // ── Data loader ─────────────────────────────────────────────────────────────
+  const load = useCallback(async (silent = false) => {
     try {
-      setError(null);
+      if (!silent) setError(null);
       const sport = selectedSport === 'All' ? undefined : selectedSport.toLowerCase();
       const data = await fetchLiveScores(sport);
       const rawGames = Array.isArray(data)
@@ -88,17 +135,53 @@ export default function ScoresScreen() {
           .filter((g: any) => g.awayTeam && g.homeTeam)
       );
     } catch (e: any) {
-      setError(e.message);
+      if (!silent) setError(e.message);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [selectedSport]);
 
+  // ── Polling setup ────────────────────────────────────────────────────────────
+  const startPolling = useCallback(
+    (delay: number) => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      currentDelayRef.current = delay;
+      intervalRef.current = setInterval(() => {
+        load(true);
+      }, delay);
+    },
+    [load]
+  );
+
+  /**
+   * When games update, check if the live/idle status changed and
+   * restart the interval at the correct rate.
+   */
+  useEffect(() => {
+    const hasLive = games.some((g) => isGameLive(g.status));
+    const target = hasLive ? LIVE_POLL_MS : IDLE_POLL_MS;
+    if (target !== currentDelayRef.current) {
+      startPolling(target);
+    }
+  }, [games, startPolling]);
+
+  // ── Focus lifecycle ──────────────────────────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
+      setLoading(true);
       load();
-    }, [load])
+      startPolling(IDLE_POLL_MS); // games useEffect will escalate to LIVE_POLL_MS if needed
+
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      };
+    }, [load, startPolling])
   );
 
   const onRefresh = () => {
@@ -141,7 +224,7 @@ export default function ScoresScreen() {
       ) : error ? (
         <View className="flex-1 items-center justify-center px-8">
           <Text className="text-red-400 text-center mb-4">{error}</Text>
-          <TouchableOpacity onPress={load} className="bg-blue-600 px-6 py-2 rounded-full">
+          <TouchableOpacity onPress={() => load()} className="bg-blue-600 px-6 py-2 rounded-full">
             <Text className="text-white font-semibold">Retry</Text>
           </TouchableOpacity>
         </View>
@@ -153,11 +236,33 @@ export default function ScoresScreen() {
         <FlatList
           data={games}
           keyExtractor={(item) => item.gameId}
-          renderItem={({ item }) => <GameCard {...item} />}
+          renderItem={({ item }) => (
+            <GameCard
+              {...item}
+              onPress={() => setSelectedGame(item as SheetGame)}
+            />
+          )}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3b82f6" />
           }
           contentContainerStyle={{ paddingTop: 12, paddingBottom: 32 }}
+        />
+      )}
+
+      {/* Game detail bottom sheet */}
+      {selectedGame && (
+        <GameDetailSheet
+          game={selectedGame}
+          onClose={() => setSelectedGame(null)}
+          onTeamPress={(t) => setSelectedTeam(t)}
+        />
+      )}
+
+      {/* Team detail bottom sheet — rendered above GameDetailSheet */}
+      {selectedTeam && (
+        <TeamDetailSheet
+          team={selectedTeam}
+          onClose={() => setSelectedTeam(null)}
         />
       )}
     </SafeAreaView>

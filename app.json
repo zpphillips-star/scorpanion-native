@@ -2,6 +2,7 @@
   "expo": {
     "name": "Scorpanion",
     "slug": "scorpanion",
+    "owner": "zachphillips",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -13,11 +14,11 @@
       "backgroundColor": "#09090b"
     },
     "ios": {
-      "bundleIdentifier": "com.zach.scorpanion",
+      "bundleIdentifier": "com.zachphillips.scorpanion",
       "supportsTablet": true
     },
     "android": {
-      "package": "com.zach.scorpanion",
+      "package": "com.zachphillips.scorpanion",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundColor": "#09090b"
