@@ -81,16 +81,40 @@ export default function HomeScreen() {
     if (isRefresh) setRefreshing(true);
     else           setLoading(true);
     try {
-      // Use schedule API — returns rich game data with team names, logos, etc.
       const raw  = await fetchSchedule(sport === 'all' ? undefined : sport);
       const list = Array.isArray(raw) ? raw : raw.games ?? raw.events ?? [];
-      // Normalize and filter by today's date range (-1 day to +2 days)
-      const now  = Date.now();
-      const ms1d = 86_400_000;
-      const normalized = list
-        .map(normalizeGame)
-        .filter((_g: NormalizedGame) => true);
-      setGames(normalized);
+
+      // Filter to "near now" window: yesterday → next 3 days
+      const now       = Date.now();
+      const yesterday = now - 86_400_000;
+      const in3days   = now + 3 * 86_400_000;
+
+      function parseKickoff(k: string): number | null {
+        if (!k) return null;
+        if (k.includes('T') || k.match(/^\d{4}-/)) {
+          const d = new Date(k).getTime();
+          return isNaN(d) ? null : d;
+        }
+        // Legacy: "07/19/2026 7:10:00 PM"
+        const [datePart = '', ...rest] = k.split(' ');
+        const [m, d, y] = datePart.split('/');
+        const t = new Date(`${y}-${(m ?? '1').padStart(2,'0')}-${(d ?? '1').padStart(2,'0')}T${rest.join(' ')}Z`).getTime();
+        return isNaN(t) ? null : t;
+      }
+
+      const filtered = list
+        .map((g: any) => ({ g, ts: parseKickoff(g.kickoff) }))
+        .filter(({ g, ts }: { g: any; ts: number | null }) =>
+          g.status === 'live' || ts === null || (ts >= yesterday && ts <= in3days)
+        )
+        .sort((a: { g: any; ts: number | null }, b: { g: any; ts: number | null }) => {
+          if (a.g.status === 'live' && b.g.status !== 'live') return -1;
+          if (b.g.status === 'live' && a.g.status !== 'live') return 1;
+          return (a.ts ?? 0) - (b.ts ?? 0);
+        })
+        .map(({ g }: { g: any }) => normalizeGame(g));
+
+      setGames(filtered);
     } catch (e) {
       console.warn('Failed to load games:', e);
       setGames([]);
