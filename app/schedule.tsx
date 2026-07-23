@@ -113,7 +113,7 @@ export default function ScheduleScreen() {
           data={games}
           keyExtractor={(item, index) => item.gameId ?? String(index)}
           renderItem={({ item }) => (
-            <GameCard {...item} onPress={() => setSelectedGame(item)} />
+            <GameCard {...item} compact onPress={() => setSelectedGame(item)} />
           )}
           refreshControl={
             <RefreshControl
