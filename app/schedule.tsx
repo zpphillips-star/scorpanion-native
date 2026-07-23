@@ -14,10 +14,8 @@ import GameCard from '../components/GameCard';
 import GameDetailSheet, { SheetGame } from '../components/GameDetailSheet';
 import TeamDetailSheet from '../components/TeamDetailSheet';
 import { fetchSchedule } from '../lib/api';
-import {
-  BG, SURFACE, SURFACE2, SURFACE3, BORDER, BORDER_D,
-  TEXT, TEXT_MUTED, TEXT_FAINT, ACCENT,
-} from '../constants/theme';
+import { normalizeGame, NormalizedGame } from '../lib/normalizeGame';
+import { BG, SURFACE, BORDER, TEXT, TEXT_FAINT, ACCENT } from '../constants/theme';
 import type { SheetTeam } from '../lib/types';
 
 function formatDate(date: Date) {
@@ -46,63 +44,9 @@ function getDays() {
   return days;
 }
 
-function getSportLabel(sport: string): string {
-  if (/baseball|mlb/.test(sport))          return 'MLB';
-  if (/basketball.*wnba|wnba/.test(sport)) return 'WNBA';
-  if (/basketball|nba/.test(sport))        return 'NBA';
-  if (/football|nfl/.test(sport))          return 'NFL';
-  if (/hockey|nhl/.test(sport))            return 'NHL';
-  if (/soccer|mls/.test(sport))            return 'MLS';
-  return sport.toUpperCase();
-}
-
-function normalizeGame(game: any): SheetGame & { gameTime?: string; sportLabel: string } {
-  const competitors = game.competitions?.[0]?.competitors || game.competitors || [];
-  const away = competitors.find((c: any) => c.homeAway === 'away') || competitors[0];
-  const home = competitors.find((c: any) => c.homeAway === 'home') || competitors[1];
-  const status =
-    game.status?.type?.description ||
-    game.status?.description ||
-    game.statusText ||
-    'Scheduled';
-  const period = game.status?.type?.shortDetail || '';
-  const sport = (game.sport || game.league || '').toLowerCase();
-  const rawDate = game.date;
-  let gameTime: string | undefined;
-  if (rawDate) {
-    try {
-      gameTime = new Date(rawDate).toLocaleTimeString('en-US', {
-        hour: 'numeric', minute: '2-digit', hour12: true,
-      });
-    } catch { /* ignore */ }
-  }
-  return {
-    gameId:    game.id || game.gameId,
-    sport,
-    sportLabel: getSportLabel(sport),
-    status,
-    period:    period || undefined,
-    gameTime,
-    awayTeam: {
-      id:           away?.team?.id || '',
-      name:         away?.team?.shortDisplayName || away?.team?.name || 'Away',
-      abbreviation: away?.team?.abbreviation || 'AWY',
-      logo:         away?.team?.logo,
-    },
-    homeTeam: {
-      id:           home?.team?.id || '',
-      name:         home?.team?.shortDisplayName || home?.team?.name || 'Home',
-      abbreviation: home?.team?.abbreviation || 'HME',
-      logo:         home?.team?.logo,
-    },
-    awayScore: away?.score !== undefined ? away.score : undefined,
-    homeScore: home?.score !== undefined ? home.score : undefined,
-  };
-}
-
 export default function ScheduleScreen() {
   const [selectedDay, setSelectedDay] = useState(new Date());
-  const [games, setGames] = useState<ReturnType<typeof normalizeGame>[]>([]);
+  const [games, setGames] = useState<NormalizedGame[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedGame, setSelectedGame] = useState<SheetGame | null>(null);
@@ -129,7 +73,6 @@ export default function ScheduleScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      {/* Page header */}
       <View style={styles.pageHeader}>
         <Text style={styles.pageTitle}>Schedule</Text>
       </View>
@@ -175,10 +118,7 @@ export default function ScheduleScreen() {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                load(selectedDay);
-              }}
+              onRefresh={() => { setRefreshing(true); load(selectedDay); }}
               tintColor={ACCENT}
               colors={[ACCENT]}
             />
@@ -202,40 +142,15 @@ export default function ScheduleScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-  pageHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 6,
-  },
-  pageTitle: {
-    color: TEXT,
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  filterBar: {
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-    maxHeight: 48,
-  },
-  filterContent: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 6,
-    flexDirection: 'row',
-  },
-  pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: SURFACE,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-  pillActive: { backgroundColor: ACCENT, borderColor: ACCENT },
-  pillText:   { color: TEXT_FAINT, fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
+  safe:        { flex: 1, backgroundColor: BG },
+  pageHeader:  { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6 },
+  pageTitle:   { color: '#fff', fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
+  filterBar:   { borderBottomWidth: 1, borderBottomColor: BORDER, maxHeight: 48 },
+  filterContent: { paddingHorizontal: 12, paddingVertical: 8, gap: 6, flexDirection: 'row' },
+  pill:        { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 999, backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER },
+  pillActive:  { backgroundColor: ACCENT, borderColor: ACCENT },
+  pillText:    { color: TEXT_FAINT, fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
   pillTextActive: { color: '#fff' },
-  center:    { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyText: { color: TEXT_FAINT, fontSize: 14 },
+  center:      { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emptyText:   { color: TEXT_FAINT, fontSize: 14 },
 });
