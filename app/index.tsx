@@ -235,7 +235,7 @@ export default function ScoresScreen() {
       ) : (
         <FlatList
           data={games}
-          keyExtractor={(item) => item.gameId}
+          keyExtractor={(item, index) => item.gameId ?? String(index)}
           renderItem={({ item }) => (
             <GameCard
               {...item}
