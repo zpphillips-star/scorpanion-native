@@ -13,6 +13,11 @@ import {
   StyleSheet,
 } from 'react-native';
 import { fetchBoxscore } from '../lib/api';
+import {
+  SURFACE, SURFACE2, BORDER, BORDER_D,
+  TEXT, TEXT_MUTED, TEXT_FAINT,
+  ACCENT, LIVE,
+} from '../constants/theme';
 import type {
   BoxscoreData,
   PeriodScore,
@@ -34,8 +39,8 @@ const SWIPE_CLOSE_VY = 0.5;
 export interface SheetGame {
   gameId: string;
   sport: string;
-  awayTeam: { name: string; abbreviation: string; logo?: string };
-  homeTeam: { name: string; abbreviation: string; logo?: string };
+  awayTeam: { id?: string; name: string; abbreviation: string; logo?: string };
+  homeTeam: { id?: string; name: string; abbreviation: string; logo?: string };
   awayScore?: number | string;
   homeScore?: number | string;
   status: string;
@@ -438,7 +443,7 @@ export default function GameDetailSheet({ game, onClose, onTeamPress }: Props) {
             {/* Loading */}
             {loading && (
               <View style={styles.loadingBlock}>
-                <ActivityIndicator size="small" color="#3b82f6" />
+                <ActivityIndicator size="small" color={ACCENT} />
                 <Text style={styles.loadingText}>Loading details…</Text>
               </View>
             )}
@@ -502,7 +507,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: SHEET_HEIGHT,
-    backgroundColor: '#18181b', // zinc-900
+    backgroundColor: SURFACE,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
@@ -515,7 +520,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#52525b',
+    backgroundColor: BORDER_D,
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -531,16 +536,16 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   statusPeriod: {
-    color: '#3b82f6',
+    color: ACCENT,
     fontSize: 13,
     fontWeight: '700',
   },
   statusDot: {
-    color: '#52525b',
+    color: TEXT_FAINT,
     fontSize: 13,
   },
   statusDetail: {
-    color: '#a1a1aa',
+    color: TEXT_MUTED,
     fontSize: 13,
     fontWeight: '500',
   },
@@ -553,7 +558,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#27272a',
+    borderBottomColor: BORDER,
   },
   teamBlock: {
     flex: 1,
@@ -568,22 +573,22 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#3f3f46',
+    backgroundColor: SURFACE2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   teamLogoText: {
-    color: '#a1a1aa',
+    color: TEXT_FAINT,
     fontSize: 14,
     fontWeight: '700',
   },
   teamAbbr: {
-    color: '#d4d4d8',
+    color: TEXT_MUTED,
     fontSize: 15,
     fontWeight: '700',
   },
   teamScore: {
-    color: '#f4f4f5',
+    color: TEXT,
     fontSize: 34,
     fontWeight: '800',
     lineHeight: 40,
@@ -592,7 +597,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   vsText: {
-    color: '#52525b',
+    color: TEXT_FAINT,
     fontSize: 18,
     fontWeight: '600',
   },
@@ -604,7 +609,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   loadingText: {
-    color: '#71717a',
+    color: TEXT_FAINT,
     fontSize: 13,
   },
   errorBlock: {
@@ -624,7 +629,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionTitle: {
-    color: '#71717a',
+    color: TEXT_FAINT,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.2,
@@ -632,7 +637,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   subsectionTitle: {
-    color: '#52525b',
+    color: TEXT_FAINT,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.8,
@@ -661,20 +666,20 @@ const styles = StyleSheet.create({
   lsTotalCell: {
     width: 36,
     borderLeftWidth: 1,
-    borderLeftColor: '#3f3f46',
+    borderLeftColor: BORDER_D,
   },
   lsHeaderText: {
-    color: '#71717a',
+    color: TEXT_FAINT,
     fontSize: 11,
     fontWeight: '600',
   },
   lsBodyText: {
-    color: '#d4d4d8',
+    color: TEXT_MUTED,
     fontSize: 13,
   },
   lsBold: {
     fontWeight: '700',
-    color: '#f4f4f5',
+    color: TEXT,
   },
 
   // Top Performers
@@ -683,10 +688,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#27272a',
+    borderBottomColor: BORDER,
   },
   performerName: {
-    color: '#e4e4e7',
+    color: TEXT,
     fontSize: 13,
     fontWeight: '600',
     width: 120,
@@ -701,13 +706,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   performerStatVal: {
-    color: '#f4f4f5',
+    color: TEXT,
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 18,
   },
   performerStatKey: {
-    color: '#71717a',
+    color: TEXT_FAINT,
     fontSize: 9,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -724,19 +729,19 @@ const styles = StyleSheet.create({
   },
   pitchingColRight: {
     borderLeftWidth: 1,
-    borderLeftColor: '#3f3f46',
+    borderLeftColor: BORDER_D,
     paddingLeft: 12,
   },
   pitcherRow: {
     marginBottom: 8,
   },
   pitcherName: {
-    color: '#e4e4e7',
+    color: TEXT,
     fontSize: 13,
     fontWeight: '600',
   },
   pitcherStat: {
-    color: '#a1a1aa',
+    color: TEXT_MUTED,
     fontSize: 12,
     marginTop: 1,
   },

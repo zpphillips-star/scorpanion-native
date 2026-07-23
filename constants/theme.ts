@@ -1,53 +1,48 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Scorpanion design tokens — matches scorpanion.com globals.css
  */
 
-import { Platform } from 'react-native';
+// ── Backgrounds ───────────────────────────────────────────────────────────────
+export const BG       = '#0c1b31';   // page background
+export const SURFACE  = '#142236';   // card surface
+export const SURFACE2 = '#1a2d4a';   // elevated card
+export const SURFACE3 = '#213858';   // header / tab bar
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+// ── Borders ───────────────────────────────────────────────────────────────────
+export const BORDER   = '#1e3050';
+export const BORDER_D = '#25405c';
 
+// ── Accent — Burnt Athletic Orange ───────────────────────────────────────────
+export const ACCENT   = '#D95C17';
+export const ACCENT_D = '#B54E13';
+
+// ── Text — Vintage Cream ─────────────────────────────────────────────────────
+export const TEXT         = '#F2E6CF';
+export const TEXT_MUTED   = '#D8C6AA';
+export const TEXT_FAINT   = '#5F6773';
+
+// ── Status ────────────────────────────────────────────────────────────────────
+export const LIVE     = '#FFB400';
+export const WIN      = '#2FA84F';
+export const LOSS     = '#C43D35';
+export const FINAL    = '#5F6773';
+
+// ── Legacy Colors export (keeps any code using Colors.dark.* working) ─────────
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    text:            '#11181C',
+    background:      '#fff',
+    tint:            ACCENT,
+    icon:            '#687076',
+    tabIconDefault:  '#687076',
+    tabIconSelected: ACCENT,
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
+    text:            TEXT,
+    background:      BG,
+    tint:            ACCENT,
+    icon:            TEXT_FAINT,
+    tabIconDefault:  TEXT_FAINT,
+    tabIconSelected: ACCENT,
   },
 };
-
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    serif: "Georgia, 'Times New Roman', serif",
-    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
-    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-  },
-});

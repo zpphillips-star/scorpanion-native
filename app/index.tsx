@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,258 +7,291 @@ import {
   ActivityIndicator,
   ScrollView,
   TouchableOpacity,
+  StyleSheet,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GameCard from '../components/GameCard';
-import GameDetailSheet, { type SheetGame } from '../components/GameDetailSheet';
+import GameDetailSheet, { SheetGame } from '../components/GameDetailSheet';
 import TeamDetailSheet from '../components/TeamDetailSheet';
 import { fetchLiveScores } from '../lib/api';
+import { BG, SURFACE3, ACCENT, TEXT, TEXT_MUTED, TEXT_FAINT, BORDER, SURFACE, LIVE } from '../constants/theme';
 import type { SheetTeam } from '../lib/types';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ── Sport filter config ───────────────────────────────────────────────────────
 
-const SPORTS = ['All', 'MLB', 'NBA', 'NFL', 'NHL', 'MLS', 'WNBA'];
-
-/** Polling intervals */
-const LIVE_POLL_MS = 2_000;
-const IDLE_POLL_MS = 30_000;
-
-/** Keywords that indicate a game is currently in progress */
-const LIVE_KEYWORDS = ['progress', 'inning', 'quarter', 'period', 'half', 'live'];
-
-function isGameLive(status: string): boolean {
-  const lower = status?.toLowerCase() ?? '';
-  return LIVE_KEYWORDS.some((kw) => lower.includes(kw));
+interface SportTab {
+  id: string;
+  label: string;
 }
 
-// ─── Normalizer ───────────────────────────────────────────────────────────────
+const SPORT_TABS: SportTab[] = [
+  { id: 'all',        label: 'All' },
+  { id: 'baseball',   label: 'MLB' },
+  { id: 'basketball', label: 'NBA' },
+  { id: 'football',   label: 'NFL' },
+  { id: 'hockey',     label: 'NHL' },
+  { id: 'soccer',     label: 'MLS' },
+  { id: 'basketball_wnba', label: 'WNBA' },
+];
 
-function normalizeGame(game: any) {
-  const competitors = game.competitions?.[0]?.competitors || game.competitors || [];
-  const away = competitors.find((c: any) => c.homeAway === 'away') || competitors[0];
-  const home = competitors.find((c: any) => c.homeAway === 'home') || competitors[1];
+// ── Data normalisation ────────────────────────────────────────────────────────
+
+function normalizeGame(raw: any): SheetGame & { gameTime?: string; sportLabel: string } {
+  const comp   = raw.competitions?.[0] ?? raw;
+  const comps  = comp.competitors ?? raw.competitors ?? [];
+  const away   = comps.find((c: any) => c.homeAway === 'away') ?? comps[0] ?? {};
+  const home   = comps.find((c: any) => c.homeAway === 'home') ?? comps[1] ?? {};
 
   const status =
-    game.status?.type?.description ||
-    game.status?.description ||
-    game.statusText ||
-    game.state ||
+    comp.status?.type?.description ??
+    comp.status?.description ??
+    raw.status?.type?.description ??
+    raw.status?.description ??
+    raw.statusText ??
     'Scheduled';
 
-  const periodNum = game.status?.period;
-  const inning = game.status?.inning;
-  const period = periodNum
-    ? `Period ${periodNum}`
-    : inning
-    ? `Inning ${inning}`
-    : undefined;
+  const period =
+    comp.status?.type?.shortDetail ??
+    raw.status?.type?.shortDetail ??
+    '';
 
-  // Game time for scheduled games
-  const rawDate = game.date || game.competitions?.[0]?.date;
+  const rawDate = raw.date ?? comp.date;
   let gameTime: string | undefined;
   if (rawDate) {
     try {
-      const d = new Date(rawDate);
-      if (!isNaN(d.getTime())) {
-        gameTime = d.toLocaleTimeString('en-US', {
-          hour: 'numeric',
-          minute: '2-digit',
-        });
-      }
-    } catch {
-      // ignore
-    }
+      gameTime = new Date(rawDate).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch { /* ignore */ }
   }
 
+  const sport: string = (raw.sport ?? raw.league ?? '').toLowerCase();
+  const sportLabel = getSportLabel(sport);
+
   return {
-    gameId: game.id || game.gameId,
-    sport: game.sport || game.league || '',
+    gameId:    raw.id ?? raw.gameId ?? String(Math.random()),
+    sport,
+    sportLabel,
+    status,
+    period:    period || undefined,
+    gameTime,
     awayTeam: {
-      id: away?.team?.id || away?.id || '',
-      name:
-        away?.team?.shortDisplayName ||
-        away?.team?.displayName ||
-        away?.team?.name ||
-        away?.name ||
-        'Away',
-      abbreviation: away?.team?.abbreviation || away?.abbreviation || 'AWY',
-      logo: away?.team?.logo || away?.logo,
+      id:           away.team?.id ?? '',
+      name:         away.team?.shortDisplayName ?? away.team?.name ?? 'Away',
+      abbreviation: away.team?.abbreviation ?? 'AWY',
+      logo:         away.team?.logo,
     },
     homeTeam: {
-      id: home?.team?.id || home?.id || '',
-      name:
-        home?.team?.shortDisplayName ||
-        home?.team?.displayName ||
-        home?.team?.name ||
-        home?.name ||
-        'Home',
-      abbreviation: home?.team?.abbreviation || home?.abbreviation || 'HME',
-      logo: home?.team?.logo || home?.logo,
+      id:           home.team?.id ?? '',
+      name:         home.team?.shortDisplayName ?? home.team?.name ?? 'Home',
+      abbreviation: home.team?.abbreviation ?? 'HME',
+      logo:         home.team?.logo,
     },
-    awayScore: away?.score !== undefined ? away.score : undefined,
-    homeScore: home?.score !== undefined ? home.score : undefined,
-    status,
-    period,
-    gameTime,
+    awayScore: away.score !== undefined ? away.score : undefined,
+    homeScore: home.score !== undefined ? home.score : undefined,
   };
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+function getSportLabel(sport: string): string {
+  if (/baseball|mlb/.test(sport))       return 'MLB';
+  if (/basketball.*wnba|wnba/.test(sport)) return 'WNBA';
+  if (/basketball|nba/.test(sport))     return 'NBA';
+  if (/football|nfl/.test(sport))       return 'NFL';
+  if (/hockey|nhl/.test(sport))         return 'NHL';
+  if (/soccer|mls/.test(sport))         return 'MLS';
+  return sport.toUpperCase();
+}
 
-export default function ScoresScreen() {
-  const [games, setGames] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+function isLiveGame(status: string): boolean {
+  const lower = status.toLowerCase();
+  return (
+    lower.includes('progress') ||
+    lower.includes('inning')   ||
+    lower.includes('quarter')  ||
+    lower.includes('period')   ||
+    lower.includes('half')     ||
+    lower === 'live'
+  );
+}
+
+// ── Sport filter pill ─────────────────────────────────────────────────────────
+
+function FilterPill({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.pill, active && styles.pillActive]}
+      activeOpacity={0.7}
+    >
+      <Text style={[styles.pillText, active && styles.pillTextActive]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+function SportSectionHeader({ label, liveCount }: { label: string; liveCount: number }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionLabel}>{label}</Text>
+      {liveCount > 0 && (
+        <View style={styles.liveBadge}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveBadgeText}>{liveCount} LIVE</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
+
+export default function HomeScreen() {
+  const [games,      setGames]      = useState<ReturnType<typeof normalizeGame>[]>([]);
+  const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedSport, setSelectedSport] = useState('All');
-  const [error, setError] = useState<string | null>(null);
+  const [sport,      setSport]      = useState('all');
   const [selectedGame, setSelectedGame] = useState<SheetGame | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<SheetTeam | null>(null);
 
-  /** Current setInterval handle */
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  /** The delay the current interval was created with – used to detect changes */
-  const currentDelayRef = useRef<number>(IDLE_POLL_MS);
 
-  // ── Data loader ─────────────────────────────────────────────────────────────
-  const load = useCallback(async (silent = false) => {
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else           setLoading(true);
     try {
-      if (!silent) setError(null);
-      const sport = selectedSport === 'All' ? undefined : selectedSport.toLowerCase();
-      const data = await fetchLiveScores(sport);
-      const rawGames = Array.isArray(data)
-        ? data
-        : data.games || data.events || data.scoreboard || [];
-      setGames(
-        rawGames
-          .map(normalizeGame)
-          .filter((g: any) => g.awayTeam && g.homeTeam)
-      );
-    } catch (e: any) {
-      if (!silent) setError(e.message);
+      const raw  = await fetchLiveScores(sport === 'all' ? undefined : sport);
+      const list = Array.isArray(raw) ? raw : raw.games ?? raw.events ?? [];
+      setGames(list.map(normalizeGame));
+    } catch {
+      setGames([]);
     } finally {
-      if (!silent) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      setLoading(false);
+      setRefreshing(false);
     }
-  }, [selectedSport]);
+  }, [sport]);
 
-  // ── Polling setup ────────────────────────────────────────────────────────────
-  const startPolling = useCallback(
-    (delay: number) => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      currentDelayRef.current = delay;
-      intervalRef.current = setInterval(() => {
-        load(true);
-      }, delay);
-    },
-    [load]
-  );
-
-  /**
-   * When games update, check if the live/idle status changed and
-   * restart the interval at the correct rate.
-   */
+  // Initial load + sport filter change
   useEffect(() => {
-    const hasLive = games.some((g) => isGameLive(g.status));
-    const target = hasLive ? LIVE_POLL_MS : IDLE_POLL_MS;
-    if (target !== currentDelayRef.current) {
-      startPolling(target);
-    }
-  }, [games, startPolling]);
-
-  // ── Focus lifecycle ──────────────────────────────────────────────────────────
-  useFocusEffect(
-    useCallback(() => {
-      setLoading(true);
-      load();
-      startPolling(IDLE_POLL_MS); // games useEffect will escalate to LIVE_POLL_MS if needed
-
-      return () => {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-      };
-    }, [load, startPolling])
-  );
-
-  const onRefresh = () => {
-    setRefreshing(true);
     load();
-  };
+    // Auto-refresh every 30s when viewing scores
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => load(), 30_000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [load]);
+
+  // Group games by sport label
+  const grouped = React.useMemo(() => {
+    const map: Record<string, ReturnType<typeof normalizeGame>[]> = {};
+    for (const g of games) {
+      const key = g.sportLabel;
+      if (!map[key]) map[key] = [];
+      map[key].push(g);
+    }
+    return Object.entries(map);
+  }, [games]);
+
+  // Flatten for FlatList with section headers
+  const listData = React.useMemo(() => {
+    const rows: Array<{ type: 'header'; label: string; liveCount: number } | { type: 'game'; game: ReturnType<typeof normalizeGame> }> = [];
+    for (const [label, grp] of grouped) {
+      const liveCount = grp.filter(g => isLiveGame(g.status)).length;
+      rows.push({ type: 'header', label, liveCount });
+      for (const g of grp) rows.push({ type: 'game', game: g });
+    }
+    return rows;
+  }, [grouped]);
 
   return (
-    <SafeAreaView className="flex-1 bg-zinc-950" edges={['left', 'right']}>
-      {/* Sport filter tabs */}
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      {/* Page header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Scorpanion</Text>
+        <Text style={styles.headerSub}>Live Scores</Text>
+      </View>
+
+      {/* Sport filter bar */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        className="border-b border-zinc-800"
-        contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 10 }}
+        style={styles.filterBar}
+        contentContainerStyle={styles.filterBarContent}
       >
-        {SPORTS.map((sport) => (
-          <TouchableOpacity
-            key={sport}
-            onPress={() => setSelectedSport(sport)}
-            className={`mr-2 px-4 py-1.5 rounded-full ${
-              selectedSport === sport ? 'bg-blue-600' : 'bg-zinc-800'
-            }`}
-          >
-            <Text
-              className={`text-sm font-semibold ${
-                selectedSport === sport ? 'text-white' : 'text-zinc-400'
-              }`}
-            >
-              {sport}
-            </Text>
-          </TouchableOpacity>
+        {SPORT_TABS.map((tab) => (
+          <FilterPill
+            key={tab.id}
+            label={tab.label}
+            active={sport === tab.id}
+            onPress={() => setSport(tab.id)}
+          />
         ))}
       </ScrollView>
 
+      {/* Content */}
       {loading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#3b82f6" />
-        </View>
-      ) : error ? (
-        <View className="flex-1 items-center justify-center px-8">
-          <Text className="text-red-400 text-center mb-4">{error}</Text>
-          <TouchableOpacity onPress={() => load()} className="bg-blue-600 px-6 py-2 rounded-full">
-            <Text className="text-white font-semibold">Retry</Text>
-          </TouchableOpacity>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={ACCENT} />
         </View>
       ) : games.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <Text className="text-zinc-500 text-lg">No games today</Text>
+        <View style={styles.center}>
+          <Text style={styles.emptyText}>No games right now</Text>
+          <Text style={styles.emptySubText}>Check the Schedule tab for upcoming games</Text>
         </View>
       ) : (
         <FlatList
-          data={games}
-          keyExtractor={(item, index) => item.gameId ?? String(index)}
-          renderItem={({ item }) => (
-            <GameCard
-              {...item}
-              onPress={() => setSelectedGame(item as SheetGame)}
-            />
-          )}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3b82f6" />
+          data={listData}
+          keyExtractor={(item, i) =>
+            item.type === 'header' ? `hdr-${item.label}` : `game-${item.game.gameId}-${i}`
           }
-          contentContainerStyle={{ paddingTop: 12, paddingBottom: 32 }}
+          renderItem={({ item }) => {
+            if (item.type === 'header') {
+              return <SportSectionHeader label={item.label} liveCount={item.liveCount} />;
+            }
+            const g = item.game;
+            return (
+              <GameCard
+                {...g}
+                onPress={() => setSelectedGame(g)}
+              />
+            );
+          }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => load(true)}
+              tintColor={ACCENT}
+              colors={[ACCENT]}
+            />
+          }
+          contentContainerStyle={styles.list}
         />
       )}
 
-      {/* Game detail bottom sheet */}
+      {/* Game detail sheet */}
       {selectedGame && (
         <GameDetailSheet
           game={selectedGame}
           onClose={() => setSelectedGame(null)}
-          onTeamPress={(t) => setSelectedTeam(t)}
+          onTeamPress={(team) => {
+            setSelectedGame(null);
+            setSelectedTeam(team);
+          }}
         />
       )}
 
-      {/* Team detail bottom sheet — rendered above GameDetailSheet */}
+      {/* Team detail sheet */}
       {selectedTeam && (
         <TeamDetailSheet
           team={selectedTeam}
@@ -268,3 +301,118 @@ export default function ScoresScreen() {
     </SafeAreaView>
   );
 }
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: BG,
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 6,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  headerTitle: {
+    color: TEXT,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  headerSub: {
+    color: TEXT_FAINT,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  filterBar: {
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+    maxHeight: 48,
+  },
+  filterBarContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+    flexDirection: 'row',
+  },
+  pill: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  pillActive: {
+    backgroundColor: ACCENT,
+    borderColor: ACCENT,
+  },
+  pillText: {
+    color: TEXT_FAINT,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  pillTextActive: {
+    color: '#fff',
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  emptyText: {
+    color: TEXT_MUTED,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  emptySubText: {
+    color: TEXT_FAINT,
+    fontSize: 12,
+  },
+  list: {
+    paddingTop: 8,
+    paddingBottom: 32,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 6,
+    gap: 8,
+  },
+  sectionLabel: {
+    color: TEXT_FAINT,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,180,0,0.12)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  liveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: LIVE,
+  },
+  liveBadgeText: {
+    color: LIVE,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+});

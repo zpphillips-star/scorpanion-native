@@ -13,6 +13,11 @@ import {
   StyleSheet,
 } from 'react-native';
 import { fetchTeamDetail } from '../lib/api';
+import {
+  SURFACE, SURFACE2, SURFACE3, BORDER, BORDER_D,
+  TEXT, TEXT_MUTED, TEXT_FAINT,
+  ACCENT, WIN, LOSS, BG,
+} from '../constants/theme';
 import type { SheetTeam, TeamDetailData, TeamDetailGame } from '../lib/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -81,13 +86,13 @@ function resolveStatValue(
 
 function ResultDot({ result }: { result: 'W' | 'L' | 'T' | undefined }) {
   const color =
-    result === 'W' ? '#22c55e' : result === 'L' ? '#ef4444' : '#71717a';
+    result === 'W' ? WIN : result === 'L' ? LOSS : '#5F6773';
   return <View style={[styles.dot, { backgroundColor: color }]} />;
 }
 
 function RecentGameRow({ game }: { game: TeamDetailGame }) {
   const resultColor =
-    game.result === 'W' ? '#22c55e' : game.result === 'L' ? '#ef4444' : '#a1a1aa';
+    game.result === 'W' ? WIN : game.result === 'L' ? LOSS : '#D8C6AA';
 
   return (
     <View style={styles.gameRow}>
@@ -337,7 +342,7 @@ export default function TeamDetailSheet({ team, onClose }: Props) {
             {/* Loading */}
             {loading && (
               <View style={styles.loadingBlock}>
-                <ActivityIndicator size="small" color="#3b82f6" />
+                <ActivityIndicator size="small" color={ACCENT} />
                 <Text style={styles.loadingText}>Loading team details…</Text>
               </View>
             )}
@@ -418,7 +423,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: SHEET_HEIGHT,
-    backgroundColor: '#18181b',
+    backgroundColor: SURFACE,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
@@ -431,7 +436,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#52525b',
+    backgroundColor: BORDER_D,
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -444,7 +449,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     marginBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#27272a',
+    borderBottomColor: BORDER,
     gap: 6,
   },
   headerLogo: {
@@ -456,28 +461,28 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#3f3f46',
+    backgroundColor: SURFACE2,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
   },
   headerLogoText: {
-    color: '#a1a1aa',
+    color: TEXT_FAINT,
     fontSize: 18,
     fontWeight: '700',
   },
   teamName: {
-    color: '#f4f4f5',
+    color: TEXT,
     fontSize: 20,
     fontWeight: '800',
   },
   teamRecord: {
-    color: '#a1a1aa',
+    color: TEXT_MUTED,
     fontSize: 14,
     fontWeight: '600',
   },
   teamStanding: {
-    color: '#3b82f6',
+    color: ACCENT,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -489,7 +494,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   loadingText: {
-    color: '#71717a',
+    color: TEXT_FAINT,
     fontSize: 13,
   },
   errorBlock: {
@@ -509,7 +514,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionTitle: {
-    color: '#71717a',
+    color: TEXT_FAINT,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.2,
@@ -535,7 +540,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#27272a',
+    borderBottomColor: BORDER,
     gap: 10,
   },
   oppLogo: {
@@ -546,23 +551,23 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#3f3f46',
+    backgroundColor: SURFACE2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   oppLogoText: {
-    color: '#a1a1aa',
+    color: TEXT_FAINT,
     fontSize: 8,
     fontWeight: '700',
   },
   oppAbbr: {
     flex: 1,
-    color: '#d4d4d8',
+    color: TEXT_MUTED,
     fontSize: 13,
     fontWeight: '600',
   },
   gameScore: {
-    color: '#a1a1aa',
+    color: TEXT_MUTED,
     fontSize: 13,
     marginRight: 8,
   },
@@ -578,12 +583,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   oppName: {
-    color: '#d4d4d8',
+    color: TEXT_MUTED,
     fontSize: 13,
     fontWeight: '600',
   },
   upcomingDate: {
-    color: '#71717a',
+    color: TEXT_FAINT,
     fontSize: 11,
     marginTop: 1,
   },
@@ -592,7 +597,7 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    backgroundColor: '#09090b',
+    backgroundColor: SURFACE2,
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 8,
@@ -602,13 +607,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statValue: {
-    color: '#f4f4f5',
+    color: TEXT,
     fontSize: 22,
     fontWeight: '800',
     lineHeight: 26,
   },
   statLabel: {
-    color: '#71717a',
+    color: TEXT_FAINT,
     fontSize: 9,
     fontWeight: '700',
     textTransform: 'uppercase',

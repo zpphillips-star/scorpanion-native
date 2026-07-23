@@ -11,7 +11,7 @@
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash-icon.png",
-      "backgroundColor": "#09090b"
+      "backgroundColor": "#0c1b31"
     },
     "ios": {
       "bundleIdentifier": "com.zachphillips.scorpanion",
@@ -21,7 +21,7 @@
       "package": "com.zachphillips.scorpanion",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundColor": "#09090b"
+        "backgroundColor": "#0c1b31"
       },
       "edgeToEdgeEnabled": true
     },
