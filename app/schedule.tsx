@@ -11,12 +11,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GameCard from '../components/GameCard';
-import GameDetailSheet, { SheetGame } from '../components/GameDetailSheet';
-import TeamDetailSheet from '../components/TeamDetailSheet';
+import GameDetailSheet from '../components/GameDetailSheet';
 import { fetchSchedule } from '../lib/api';
 import { normalizeGame, NormalizedGame } from '../lib/normalizeGame';
 import { BG, SURFACE, BORDER, TEXT, TEXT_FAINT, ACCENT } from '../constants/theme';
-import type { SheetTeam } from '../lib/types';
+import type { ScorpanionGame } from '../lib/types';
 
 function formatDate(date: Date) {
   return date.toISOString().split('T')[0].replace(/-/g, '');
@@ -47,18 +46,21 @@ function getDays() {
 export default function ScheduleScreen() {
   const [selectedDay, setSelectedDay] = useState(new Date());
   const [games, setGames] = useState<NormalizedGame[]>([]);
+  const [rawById, setRawById] = useState<Map<string, any>>(new Map());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedGame, setSelectedGame] = useState<SheetGame | null>(null);
-  const [selectedTeam, setSelectedTeam] = useState<SheetTeam | null>(null);
+  const [selectedGame, setSelectedGame] = useState<ScorpanionGame | null>(null);
   const days = getDays();
 
   const load = useCallback(async (date: Date) => {
     try {
       setLoading(true);
       const data = await fetchSchedule(undefined, formatDate(date));
-      const rawGames = Array.isArray(data) ? data : data.games || data.events || [];
-      setGames(rawGames.map(normalizeGame));
+      const raw = Array.isArray(data) ? data : data.games || data.events || [];
+      const map = new Map<string, any>();
+      raw.forEach((g: any) => { if (g.id) map.set(String(g.id), g); });
+      setRawById(map);
+      setGames(raw.map(normalizeGame));
     } catch {
       setGames([]);
     } finally {
@@ -113,7 +115,10 @@ export default function ScheduleScreen() {
           data={games}
           keyExtractor={(item, index) => item.gameId ?? String(index)}
           renderItem={({ item }) => (
-            <GameCard {...item} compact onPress={() => setSelectedGame(item)} />
+            <GameCard {...item} compact onPress={() => {
+              const raw = rawById.get(item.gameId);
+              if (raw) setSelectedGame(raw);
+            }} />
           )}
           refreshControl={
             <RefreshControl
@@ -131,11 +136,7 @@ export default function ScheduleScreen() {
         <GameDetailSheet
           game={selectedGame}
           onClose={() => setSelectedGame(null)}
-          onTeamPress={(team) => { setSelectedGame(null); setSelectedTeam(team); }}
         />
-      )}
-      {selectedTeam && (
-        <TeamDetailSheet team={selectedTeam} onClose={() => setSelectedTeam(null)} />
       )}
     </SafeAreaView>
   );
@@ -144,7 +145,7 @@ export default function ScheduleScreen() {
 const styles = StyleSheet.create({
   safe:        { flex: 1, backgroundColor: BG },
   pageHeader:  { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6 },
-  pageTitle:   { color: '#fff', fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
+  pageTitle:   { color: TEXT, fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
   filterBar:   { borderBottomWidth: 1, borderBottomColor: BORDER, maxHeight: 48 },
   filterContent: { paddingHorizontal: 12, paddingVertical: 8, gap: 6, flexDirection: 'row' },
   pill:        { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 999, backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER },

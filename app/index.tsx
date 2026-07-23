@@ -5,12 +5,23 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GameCard from '../components/GameCard';
-import GameDetailSheet, { SheetGame } from '../components/GameDetailSheet';
-import TeamDetailSheet from '../components/TeamDetailSheet';
+import GameDetailSheet from '../components/GameDetailSheet';
 import { fetchSchedule } from '../lib/api';
 import { normalizeGame, isLiveStatus, NormalizedGame } from '../lib/normalizeGame';
-import { BG, SURFACE, BORDER, ACCENT, TEXT_FAINT } from '../constants/theme';
-import type { SheetTeam } from '../lib/types';
+import { BG, SURFACE, BORDER, ACCENT, TEXT_FAINT, SURFACE2 } from '../constants/theme';
+import type { ScorpanionGame } from '../lib/types';
+import { useSportsData } from '../context/SportsDataContext';
+import { ALL_PRO_TEAMS } from '../lib/allProTeams';
+
+// Mapping from ALL_PRO_TEAMS.id → scorpanion seattleTeam.id (used to filter home screen)
+const PRO_TO_SEATTLE_ID: Record<string, string> = {
+  'nfl-sea':    'seahawks',
+  'mlb-sea':    'mariners',
+  'nhl-sea':    'kraken',
+  'wnba-sea':   'storm',
+  'mls-seattle': 'sounders',
+  'nwsl-reign': 'reign',
+};
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -100,12 +111,21 @@ function DateHeader({ dateStr }: { dateStr: string }) {
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function HomeScreen() {
+  const { followedTeams } = useSportsData();
   const [allGames,   setAllGames]   = useState<any[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedGame, setSelectedGame] = useState<SheetGame | null>(null);
-  const [selectedTeam, setSelectedTeam] = useState<SheetTeam | null>(null);
+  const [selectedGame, setSelectedGame] = useState<ScorpanionGame | null>(null);
+  const [activeFilter, setActiveFilter] = useState<string>('all');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Teams the user follows that are filterable on the home screen (have a seattleTeam mapping)
+  const filterableTeams = React.useMemo(() =>
+    followedTeams
+      .map(id => ALL_PRO_TEAMS.find(t => t.id === id))
+      .filter((t): t is NonNullable<typeof t> => !!t && PRO_TO_SEATTLE_ID[t.id] !== undefined),
+    [followedTeams]
+  );
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -130,16 +150,26 @@ export default function HomeScreen() {
   const day7  = 7 * 86_400_000;
   const day14 = 14 * 86_400_000;
 
-  // Categorize games
-  const { recent, todayGames, upcoming } = React.useMemo(() => {
+  // Apply team filter to raw games before normalizing
+  const filteredGames = React.useMemo(() => {
+    if (activeFilter === 'all') return allGames;
+    const seattleId = PRO_TO_SEATTLE_ID[activeFilter];
+    if (!seattleId) return allGames;
+    return allGames.filter((g: any) => g.seattleTeam?.id === seattleId);
+  }, [allGames, activeFilter]);
+
+  // Categorize games + build raw lookup map
+  const { recent, todayGames, upcoming, rawById } = React.useMemo(() => {
     const recent: NormalizedGame[]  = [];
     const todayGames: NormalizedGame[] = [];
     const upcoming: NormalizedGame[] = [];
+    const rawById = new Map<string, any>();
 
-    for (const g of allGames) {
+    for (const g of filteredGames) {
       const ts  = parseKickoffMs(g.kickoff);
       const ds  = kickoffDateStr(g.kickoff);
       const norm = normalizeGame(g);
+      rawById.set(norm.gameId, g);
 
       if (g.status === 'live' || isLiveStatus(norm.status)) {
         todayGames.unshift(norm); // live → top of today
@@ -152,24 +182,24 @@ export default function HomeScreen() {
       }
     }
 
-    recent.sort((a, b) => (parseKickoffMs((allGames.find(g => g.id === a.gameId) ?? {}).kickoff ?? '') ?? 0) - (parseKickoffMs((allGames.find(g => g.id === b.gameId) ?? {}).kickoff ?? '') ?? 0));
-    upcoming.sort((a, b) => (parseKickoffMs((allGames.find(g => g.id === a.gameId) ?? {}).kickoff ?? '') ?? 0) - (parseKickoffMs((allGames.find(g => g.id === b.gameId) ?? {}).kickoff ?? '') ?? 0));
+    recent.sort((a, b) => (parseKickoffMs((filteredGames.find((g: any) => g.id === a.gameId) ?? {}).kickoff ?? '') ?? 0) - (parseKickoffMs((filteredGames.find((g: any) => g.id === b.gameId) ?? {}).kickoff ?? '') ?? 0));
+    upcoming.sort((a, b) => (parseKickoffMs((filteredGames.find((g: any) => g.id === a.gameId) ?? {}).kickoff ?? '') ?? 0) - (parseKickoffMs((filteredGames.find((g: any) => g.id === b.gameId) ?? {}).kickoff ?? '') ?? 0));
 
-    return { recent, todayGames, upcoming };
-  }, [allGames, today, now]);
+    return { recent, todayGames, upcoming, rawById };
+  }, [filteredGames, today, now]);
 
   // Group upcoming by date
   const upcomingByDate = React.useMemo(() => {
     const map: Record<string, NormalizedGame[]> = {};
     for (const g of upcoming) {
-      const rawG = allGames.find(r => r.id === g.gameId);
+      const rawG = filteredGames.find((r: any) => r.id === g.gameId);
       const ds   = rawG ? kickoffDateStr(rawG.kickoff) : null;
       const key  = ds ?? 'TBD';
       if (!map[key]) map[key] = [];
       map[key].push(g);
     }
     return Object.entries(map);
-  }, [upcoming, allGames]);
+  }, [upcoming, filteredGames]);
 
   const hasLive = todayGames.some(g => isLiveStatus(g.status));
 
@@ -178,6 +208,24 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.center}>
           <ActivityIndicator size="large" color={ACCENT} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Empty state — no teams followed
+  if (followedTeams.length === 0) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Scorpanion</Text>
+        </View>
+        <View style={styles.noTeamsState}>
+          <View style={styles.noTeamsCircle}>
+            <Text style={styles.noTeamsPlus}>+</Text>
+          </View>
+          <Text style={styles.noTeamsTitle}>Add your teams</Text>
+          <Text style={styles.noTeamsSub}>Follow teams to see their scores here</Text>
         </View>
       </SafeAreaView>
     );
@@ -202,13 +250,58 @@ export default function HomeScreen() {
           )}
         </View>
 
+        {/* ── Team filter bar (shown when following filterable teams) ── */}
+        {filterableTeams.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterBarContent}
+            style={styles.filterBarScroll}
+          >
+            {/* ALL pill */}
+            <TouchableOpacity
+              onPress={() => setActiveFilter('all')}
+              activeOpacity={0.75}
+            >
+              <View style={[
+                styles.filterCircle,
+                activeFilter === 'all' && styles.filterCircleActive,
+              ]}>
+                <Text style={styles.filterAllText}>All</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Per-team logo pills */}
+            {filterableTeams.map(team => {
+              const isActive = activeFilter === team.id;
+              const isDimmed = activeFilter !== 'all' && !isActive;
+              return (
+                <TouchableOpacity
+                  key={team.id}
+                  onPress={() => setActiveFilter(isActive ? 'all' : team.id)}
+                  activeOpacity={0.75}
+                >
+                  <View style={[
+                    styles.filterCircle,
+                    styles.filterCircleTeam,
+                    isActive && styles.filterCircleActive,
+                    isDimmed && styles.filterCircleDim,
+                  ]}>
+                    <Image source={{ uri: team.logo }} style={styles.filterLogo} resizeMode="contain" />
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+
         {/* ── RECENT section ── */}
         {recent.length > 0 && (
           <View style={styles.section}>
             {sectionHeader('RECENT', 'LAST 7 DAYS')}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.miniScroll}>
               {recent.map((g) => (
-                <MiniCard key={g.gameId} game={g} onPress={() => setSelectedGame(g)} />
+                <MiniCard key={g.gameId} game={g} onPress={() => { const raw = rawById.get(g.gameId); if (raw) setSelectedGame(raw); }} />
               ))}
             </ScrollView>
           </View>
@@ -219,7 +312,7 @@ export default function HomeScreen() {
           <View style={styles.section}>
             {sectionHeader('TODAY', new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase())}
             {todayGames.map((g) => (
-              <GameCard key={g.gameId} {...g} onPress={() => setSelectedGame(g)} />
+              <GameCard key={g.gameId} {...g} onPress={() => { const raw = rawById.get(g.gameId); if (raw) setSelectedGame(raw); }} />
             ))}
           </View>
         )}
@@ -232,7 +325,7 @@ export default function HomeScreen() {
               <View key={date}>
                 <DateHeader dateStr={date} />
                 {games.map((g) => (
-                  <GameCard key={g.gameId} {...g} compact onPress={() => setSelectedGame(g)} />
+                  <GameCard key={g.gameId} {...g} compact onPress={() => { const raw = rawById.get(g.gameId); if (raw) setSelectedGame(raw); }} />
                 ))}
               </View>
             ))}
@@ -250,11 +343,7 @@ export default function HomeScreen() {
       </ScrollView>
 
       {selectedGame && (
-        <GameDetailSheet game={selectedGame} onClose={() => setSelectedGame(null)}
-          onTeamPress={(team) => { setSelectedGame(null); setSelectedTeam(team); }} />
-      )}
-      {selectedTeam && (
-        <TeamDetailSheet team={selectedTeam} onClose={() => setSelectedTeam(null)} />
+        <GameDetailSheet game={selectedGame as any} onClose={() => setSelectedGame(null)} />
       )}
     </SafeAreaView>
   );
@@ -268,6 +357,39 @@ const styles = StyleSheet.create({
   livePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(239,68,68,0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   liveDot:  { width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef4444' },
   liveText: { color: '#f87171', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+
+  // ── Team filter bar ──────────────────────────────────────────────────────────
+  filterBarScroll: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.07)' },
+  filterBarContent: { paddingHorizontal: 16, paddingVertical: 10, gap: 10, flexDirection: 'row' },
+  filterCircle: {
+    width: 48, height: 48, borderRadius: 24,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: BG,
+    borderWidth: 2, borderColor: 'rgba(214,88,32,0.45)',
+  },
+  filterCircleTeam: {
+    overflow: 'hidden', padding: 4,
+    backgroundColor: SURFACE2,
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  filterCircleActive: {
+    borderColor: '#D65820',
+    shadowColor: '#D65820',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  filterCircleDim: { opacity: 0.4 },
+  filterLogo: { width: 32, height: 32 },
+  filterAllText: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+
+  // ── No-teams empty state ─────────────────────────────────────────────────────
+  noTeamsState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 16 },
+  noTeamsCircle: { width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderStyle: 'dashed', borderColor: '#4b5563', alignItems: 'center', justifyContent: 'center' },
+  noTeamsPlus: { color: '#6b7280', fontSize: 36, fontWeight: '300', marginTop: -2 },
+  noTeamsTitle: { color: '#F2E6CF', fontSize: 16, fontWeight: '700' },
+  noTeamsSub: { color: TEXT_FAINT, fontSize: 13, textAlign: 'center' },
 
   section: { marginTop: 24 },
 

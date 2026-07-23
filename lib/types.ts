@@ -1,3 +1,95 @@
+// ─── Raw scorpanion game format (from /api/schedule) ─────────────────────────
+export interface ScorpanionGame {
+  id: string;
+  seattleTeamId?: string;
+  seattleTeam: {
+    id: string;
+    name: string;
+    shortName: string;
+    abbr: string;
+    sport: string;
+    league: string;
+    espnId: string;
+    primaryColor: string;
+    secondaryColor: string;
+    emoji: string;
+    logoUrl?: string;
+  };
+  opponent: {
+    id: string;
+    name: string;
+    shortName?: string;
+    abbr: string;
+    logo: string;
+    record?: { wins: number; losses: number; ties?: number };
+  };
+  isHome: boolean;
+  kickoff: string;
+  venue?: { name?: string; city?: string; state?: string };
+  status: 'upcoming' | 'live' | 'ft' | string;
+  seattleScore?: number;
+  opponentScore?: number;
+  sport: string;
+  league: string;
+  broadcast?: string;
+  period?: string;
+  clock?: string;
+  weekLabel?: string;
+  seattleRecord?: { wins: number; losses: number; ties?: number };
+  opponentRecord?: { wins: number; losses: number; ties?: number };
+}
+
+// ─── Web API team-detail response shape ──────────────────────────────────────
+export interface WebTeamDetail {
+  id: string;
+  name: string;
+  shortName: string;
+  abbr: string;
+  logo: string;
+  color: string;
+  altColor: string;
+  wins: number;
+  losses: number;
+  ties?: number;
+  winPct?: string;
+  recentForm: {
+    result: 'W' | 'L' | 'T';
+    myScore: number;
+    oppScore: number;
+    isHome: boolean;
+    opponent: string;
+    oppLogo: string;
+    date: string;
+  }[];
+  upcomingGames: {
+    opponent: string;
+    oppLogo: string;
+    date: string;
+    isHome: boolean;
+    time: string;
+  }[];
+  divisionRank: number | null;
+  divisionName: string;
+  divisionStandings: {
+    abbr: string;
+    logo: string;
+    wins: number;
+    losses: number;
+    winPct: number;
+    isThis: boolean;
+  }[];
+  venue: string | null;
+  location: string | null;
+}
+
+// ─── TeamDetailSheet open params ─────────────────────────────────────────────
+export interface TeamSheetParams {
+  teamId: string;
+  teamName: string;
+  teamLogo?: string;
+  league: string;
+}
+
 export interface TeamInfo {
   id: string;
   name: string;

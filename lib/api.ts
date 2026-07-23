@@ -1,4 +1,5 @@
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://scorpanion.vercel.app';
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://scorpanion.com';
+const SCORPANION = 'https://scorpanion.com';
 
 export async function fetchLiveScores(sport?: string, date?: string) {
   const params = new URLSearchParams();
@@ -43,6 +44,14 @@ export async function fetchTeams(sport?: string) {
   const params = new URLSearchParams();
   if (sport) params.set('sport', sport);
   const url = `${API_BASE}/api/teams?${params}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function fetchTeamDetailByLeague(teamId: string, league: string) {
+  const params = new URLSearchParams({ teamId, league });
+  const url = `${SCORPANION}/api/team-detail?${params}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();

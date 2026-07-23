@@ -8,493 +8,409 @@ import {
   PanResponder,
   ScrollView,
   Image,
-  ActivityIndicator,
-  Dimensions,
   StyleSheet,
+  Dimensions,
 } from 'react-native';
-import { fetchBoxscore } from '../lib/api';
-import {
-  SURFACE, SURFACE2, BORDER, BORDER_D,
-  TEXT, TEXT_MUTED, TEXT_FAINT,
-  ACCENT, LIVE,
-} from '../constants/theme';
-import type {
-  BoxscoreData,
-  PeriodScore,
-  Performer,
-  Pitcher,
-  SheetTeam,
-  TeamScore,
-} from '../lib/types';
+import { getSeattleTeamLogo } from '../lib/normalizeGame';
+import type { ScorpanionGame, WebTeamDetail, TeamSheetParams } from '../lib/types';
+import TeamDetailSheet from './TeamDetailSheet';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+const BG           = '#0c1b31';
+const SURFACE2     = '#1a2d4a';
+const BORDER       = '#1e3050';
+const TEXT         = '#F2E6CF';
+const TEXT_FAINT   = '#5F6773';
+const ACCENT       = '#D95C17';
+const LOSER        = '#3f4f62';
+const WIN_GREEN    = '#34d399';
+const LOSS_RED     = '#f87171';
+const TIE_GRAY     = '#52525b';
+
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SHEET_HEIGHT = SCREEN_HEIGHT * 0.85;
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.9;
 const SWIPE_CLOSE_DY = 120;
 const SWIPE_CLOSE_VY = 0.5;
 
-// ─── Prop types ───────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-export interface SheetGame {
-  gameId: string;
-  sport: string;
-  awayTeam: { id?: string; name: string; abbreviation: string; logo?: string };
-  homeTeam: { id?: string; name: string; abbreviation: string; logo?: string };
-  awayScore?: number | string;
-  homeScore?: number | string;
-  status: string;
-  period?: string;
+function parseKickoff(kickoff: string): Date {
+  if (!kickoff) return new Date(NaN);
+  if (kickoff.includes('T') || kickoff.startsWith('20')) return new Date(kickoff);
+  const [datePart = '', timePart = '00:00:00'] = kickoff.split(' ');
+  const parts = datePart.split('/');
+  if (parts.length === 3) {
+    const [mm, dd, yyyy] = parts;
+    return new Date(`${yyyy}-${(mm ?? '1').padStart(2,'0')}-${(dd ?? '1').padStart(2,'0')}T${timePart}Z`);
+  }
+  return new Date(kickoff);
 }
 
-interface Props {
-  game: SheetGame | null;
-  onClose: () => void;
-  onTeamPress?: (team: SheetTeam) => void;
+function fmtDate(iso: string): string {
+  return parseKickoff(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+function getLiveDetail(game: ScorpanionGame): string {
+  const p = game.period ? Number(game.period) : null;
+  const clk = game.clock;
+  if (game.sport === 'baseball' && p) {
+    const half = p % 2 === 1 ? 'Top' : 'Bot';
+    return `${half} ${Math.ceil(p / 2)}${clk ? ' · ' + clk : ''}`;
+  }
+  if (game.sport === 'basketball' && p) return clk ? `Q${p}  ${clk}` : `Q${p}`;
+  if (game.sport === 'hockey' && p) { const l = ['1st','2nd','3rd','OT'][p-1] || `P${p}`; return clk ? `${l}  ${clk}` : l; }
+  if (game.sport === 'football' && p) { const l = ['1st','2nd','3rd','4th','OT'][p-1] || `Q${p}`; return clk ? `${l}  ${clk}` : l; }
+  if (game.sport === 'soccer') return clk ? `${clk}′` : 'Live';
+  return clk || 'Live';
+}
 
-function TeamHeaderBlock({
-  team,
-  onPress,
-}: {
-  team: TeamScore;
-  onPress?: () => void;
-}) {
+function formatRecord(r?: { wins: number; losses: number; ties?: number }): string {
+  if (!r) return '';
+  return r.ties ? `${r.wins}-${r.losses}-${r.ties}` : `${r.wins}-${r.losses}`;
+}
+
+// ─── Section divider ──────────────────────────────────────────────────────────
+
+function SectionDivider({ label }: { label: string }) {
   return (
-    <TouchableOpacity
-      style={styles.teamBlock}
-      onPress={onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-      disabled={!onPress}
-    >
-      {team.logo ? (
-        <Image source={{ uri: team.logo }} style={styles.teamLogo} resizeMode="contain" />
-      ) : (
-        <View style={styles.teamLogoFallback}>
-          <Text style={styles.teamLogoText}>{team.abbreviation?.slice(0, 3)}</Text>
+    <View style={sd.row}>
+      <View style={sd.line} />
+      <Text style={sd.label}>{label}</Text>
+      <View style={sd.line} />
+    </View>
+  );
+}
+const sd = StyleSheet.create({
+  row:   { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 },
+  line:  { flex: 1, height: 1, backgroundColor: 'rgba(113,113,122,0.3)' },
+  label: { color: TEXT_FAINT, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' },
+});
+
+// ─── Form dots ────────────────────────────────────────────────────────────────
+
+function FormDots({ form }: { form: { result: 'W' | 'L' | 'T' }[] }) {
+  if (!form || form.length === 0) return null;
+  return (
+    <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+      {[...form].reverse().slice(0, 5).map((f, i) => (
+        <View
+          key={i}
+          style={{
+            width: 8, height: 8, borderRadius: 4,
+            backgroundColor: f.result === 'W' ? WIN_GREEN : f.result === 'L' ? LOSS_RED : TIE_GRAY,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+// ─── Team context card (form + standings) ────────────────────────────────────
+
+function TeamContext({ name, color, detail }: { name: string; color: string; detail: WebTeamDetail | null }) {
+  if (!detail) return null;
+  const form = detail.recentForm?.slice(0, 5) ?? [];
+  const standings = detail.divisionStandings ?? [];
+
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={{ color: TEXT, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>{name}</Text>
+      {form.length > 0 && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ color: TEXT_FAINT, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', width: 40 }}>Last 5</Text>
+          <FormDots form={form} />
         </View>
       )}
-      <Text style={styles.teamAbbr} numberOfLines={1}>
-        {team.abbreviation}
-      </Text>
-      <Text style={styles.teamScore}>{team.score ?? '—'}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function LineScoreTable({
-  lineScore,
-  awayAbbr,
-  homeAbbr,
-  awayTotal,
-  homeTotal,
-  sport,
-}: {
-  lineScore: PeriodScore[];
-  awayAbbr: string;
-  homeAbbr: string;
-  awayTotal?: number | string;
-  homeTotal?: number | string;
-  sport: string;
-}) {
-  const isMLB = /mlb|baseball/i.test(sport);
-  const totalLabel = isMLB ? 'R' : 'T';
-
-  const awaySum = awayTotal ?? lineScore.reduce((s, p) => s + (Number(p.away) || 0), 0);
-  const homeSum = homeTotal ?? lineScore.reduce((s, p) => s + (Number(p.home) || 0), 0);
-
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={styles.lineScoreScroll}
-    >
-      <View>
-        {/* Header row */}
-        <View style={styles.lsRow}>
-          <Text style={[styles.lsCell, styles.lsTeamCell, styles.lsHeaderText]}>{' '}</Text>
-          {lineScore.map((p) => (
-            <Text key={p.label} style={[styles.lsCell, styles.lsHeaderText]}>
-              {p.label}
-            </Text>
-          ))}
-          <Text style={[styles.lsCell, styles.lsTotalCell, styles.lsHeaderText]}>
-            {totalLabel}
-          </Text>
-        </View>
-        {/* Away row */}
-        <View style={styles.lsRow}>
-          <Text style={[styles.lsCell, styles.lsTeamCell, styles.lsBodyText]}>{awayAbbr}</Text>
-          {lineScore.map((p, i) => (
-            <Text key={i} style={[styles.lsCell, styles.lsBodyText]}>
-              {p.away ?? '-'}
-            </Text>
-          ))}
-          <Text style={[styles.lsCell, styles.lsTotalCell, styles.lsBodyText, styles.lsBold]}>
-            {awaySum}
-          </Text>
-        </View>
-        {/* Home row */}
-        <View style={styles.lsRow}>
-          <Text style={[styles.lsCell, styles.lsTeamCell, styles.lsBodyText]}>{homeAbbr}</Text>
-          {lineScore.map((p, i) => (
-            <Text key={i} style={[styles.lsCell, styles.lsBodyText]}>
-              {p.home ?? '-'}
-            </Text>
-          ))}
-          <Text style={[styles.lsCell, styles.lsTotalCell, styles.lsBodyText, styles.lsBold]}>
-            {homeSum}
-          </Text>
-        </View>
-      </View>
-    </ScrollView>
-  );
-}
-
-function PerformerRow({ performer }: { performer: Performer }) {
-  const statKeys = Object.keys(performer.stats);
-  return (
-    <View style={styles.performerRow}>
-      <Text style={styles.performerName} numberOfLines={1}>
-        {performer.name}
-      </Text>
-      <View style={styles.performerStats}>
-        {statKeys.map((key) => (
-          <View key={key} style={styles.performerStat}>
-            <Text style={styles.performerStatVal}>{performer.stats[key]}</Text>
-            <Text style={styles.performerStatKey}>{key}</Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function PerformersSection({
-  awayAbbr,
-  homeAbbr,
-  away,
-  home,
-}: {
-  awayAbbr: string;
-  homeAbbr: string;
-  away: Performer[];
-  home: Performer[];
-}) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Top Performers</Text>
-      <Text style={styles.subsectionTitle}>{awayAbbr}</Text>
-      {away.map((p, i) => (
-        <PerformerRow key={i} performer={p} />
-      ))}
-      <Text style={[styles.subsectionTitle, { marginTop: 10 }]}>{homeAbbr}</Text>
-      {home.map((p, i) => (
-        <PerformerRow key={i} performer={p} />
-      ))}
-    </View>
-  );
-}
-
-function PitchingSection({
-  awayAbbr,
-  homeAbbr,
-  away,
-  home,
-}: {
-  awayAbbr: string;
-  homeAbbr: string;
-  away: Pitcher[];
-  home: Pitcher[];
-}) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Pitching</Text>
-      <View style={styles.pitchingCols}>
-        <View style={styles.pitchingCol}>
-          <Text style={styles.subsectionTitle}>{awayAbbr}</Text>
-          {away.map((p, i) => (
-            <View key={i} style={styles.pitcherRow}>
-              <Text style={styles.pitcherName} numberOfLines={1}>
-                {p.name}
+      {standings.length > 0 && (
+        <View style={{ gap: 2 }}>
+          {standings.map((row, i) => (
+            <View
+              key={i}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 3,
+                borderLeftWidth: 2,
+                borderLeftColor: row.isThis ? color : 'transparent',
+                paddingLeft: 6,
+              }}
+            >
+              {row.logo
+                ? <Image source={{ uri: row.logo }} style={{ width: 12, height: 12, opacity: row.isThis ? 1 : 0.5 }} resizeMode="contain" />
+                : <View style={{ width: 12, height: 12 }} />
+              }
+              <Text style={{ flex: 1, color: row.isThis ? TEXT : TEXT_FAINT, fontSize: 11, fontWeight: row.isThis ? '700' : '400' }}>
+                {row.abbr}
               </Text>
-              <Text style={styles.pitcherStat}>
-                {p.ip} IP · {p.er} ER
+              <Text style={{ color: row.isThis ? TEXT : TEXT_FAINT, fontSize: 11, fontWeight: row.isThis ? '700' : '400' }}>
+                {row.wins}–{row.losses}
               </Text>
             </View>
           ))}
         </View>
-        <View style={[styles.pitchingCol, styles.pitchingColRight]}>
-          <Text style={styles.subsectionTitle}>{homeAbbr}</Text>
-          {home.map((p, i) => (
-            <View key={i} style={styles.pitcherRow}>
-              <Text style={styles.pitcherName} numberOfLines={1}>
-                {p.name}
-              </Text>
-              <Text style={styles.pitcherStat}>
-                {p.ip} IP · {p.er} ER
-              </Text>
-            </View>
-          ))}
-        </View>
-      </View>
+      )}
     </View>
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────────
 
-export default function GameDetailSheet({ game, onClose, onTeamPress }: Props) {
-  const [boxscore, setBoxscore] = useState<BoxscoreData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface Props {
+  game: ScorpanionGame;
+  onClose: () => void;
+}
 
-  const translateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+export default function GameDetailSheet({ game, onClose }: Props) {
+  const [teamSheet, setTeamSheet] = useState<TeamSheetParams | null>(null);
+  const [seaDetail, setSeaDetail] = useState<WebTeamDetail | null>(null);
+  const [oppDetail, setOppDetail] = useState<WebTeamDetail | null>(null);
+
+  const translateY    = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const pulse         = useRef(new Animated.Value(1)).current;
+  const closeRef      = useRef<() => void>(() => {});
 
-  // Keep a stable ref so PanResponder callbacks always call the latest closeSheet
-  const closeRef = useRef<() => void>(() => {});
+  // ── State flags ──
+  const isLive     = game.status === 'live';
+  const isFt       = game.status === 'ft';
+  const isUpcoming = !isLive && !isFt;
+  const hasScore   = (isLive || isFt) && game.seattleScore !== undefined && game.opponentScore !== undefined;
+  const liveDetail = isLive ? getLiveDetail(game) : '';
 
+  // ── Away / Home layout ──
+  const seattleLogoUrl = getSeattleTeamLogo(game.seattleTeam.id) ?? game.seattleTeam.logoUrl ?? '';
+  const awayLogo   = game.isHome ? game.opponent.logo  : seattleLogoUrl;
+  const awayAbbr   = game.isHome ? game.opponent.abbr  : game.seattleTeam.abbr;
+  const awayName   = game.isHome ? (game.opponent.shortName || game.opponent.name) : game.seattleTeam.shortName;
+  const awayDetail = game.isHome ? oppDetail : seaDetail;
+  const awayColor  = game.isHome ? (oppDetail?.color ?? '#374151') : (game.seattleTeam.primaryColor ?? ACCENT);
+  const awayRecord = game.isHome ? game.opponentRecord : game.seattleRecord;
+
+  const homeLogo   = game.isHome ? seattleLogoUrl     : game.opponent.logo;
+  const homeAbbr   = game.isHome ? game.seattleTeam.abbr : game.opponent.abbr;
+  const homeName   = game.isHome ? game.seattleTeam.shortName : (game.opponent.shortName || game.opponent.name);
+  const homeDetail = game.isHome ? seaDetail : oppDetail;
+  const homeColor  = game.isHome ? (game.seattleTeam.primaryColor ?? ACCENT) : (oppDetail?.color ?? '#374151');
+  const homeRecord = game.isHome ? game.seattleRecord : game.opponentRecord;
+
+  const awayScore = game.isHome ? game.opponentScore : game.seattleScore;
+  const homeScore = game.isHome ? game.seattleScore  : game.opponentScore;
+  const awayWon   = hasScore && (awayScore ?? 0) > (homeScore ?? 0);
+  const homeWon   = hasScore && (homeScore ?? 0) > (awayScore ?? 0);
+
+  // ── Fetch team details ──
+  useEffect(() => {
+    const seaId = game.seattleTeam.espnId || game.seattleTeam.id;
+    const oppId = game.opponent.id;
+    const league = game.league;
+    if (!seaId || !oppId) return;
+    Promise.all([
+      fetch(`https://scorpanion.com/api/team-detail?teamId=${encodeURIComponent(seaId)}&league=${encodeURIComponent(league)}`).then(r => r.ok ? r.json() : null),
+      fetch(`https://scorpanion.com/api/team-detail?teamId=${encodeURIComponent(oppId)}&league=${encodeURIComponent(league)}`).then(r => r.ok ? r.json() : null),
+    ]).then(([sea, opp]) => {
+      if (sea) setSeaDetail(sea);
+      if (opp) setOppDetail(opp);
+    }).catch(() => {});
+  }, [game.id]);
+
+  // ── Pulsing live dot ──
+  useEffect(() => {
+    if (!isLive) { pulse.setValue(1); return; }
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.1, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1,   duration: 600, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [isLive, pulse]);
+
+  // ── Sheet animation ──
   const closeSheet = useCallback(() => {
     Animated.parallel([
-      Animated.timing(translateY, {
-        toValue: SHEET_HEIGHT,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
+      Animated.timing(translateY, { toValue: SHEET_HEIGHT, duration: 250, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start(() => onClose());
   }, [onClose, translateY, backdropOpacity]);
 
-  // Always keep closeRef in sync
-  useEffect(() => {
-    closeRef.current = closeSheet;
-  });
+  useEffect(() => { closeRef.current = closeSheet; });
 
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) =>
-        gs.dy > 5 && Math.abs(gs.dy) > Math.abs(gs.dx),
-      onPanResponderMove: (_, gs) => {
-        if (gs.dy > 0) translateY.setValue(gs.dy);
-      },
+      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 5 && Math.abs(gs.dy) > Math.abs(gs.dx),
+      onPanResponderMove: (_, gs) => { if (gs.dy > 0) translateY.setValue(gs.dy); },
       onPanResponderRelease: (_, gs) => {
         if (gs.dy > SWIPE_CLOSE_DY || gs.vy > SWIPE_CLOSE_VY) {
           closeRef.current();
         } else {
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 65,
-            friction: 11,
-          }).start();
+          Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }).start();
         }
       },
     })
   ).current;
 
   useEffect(() => {
-    if (!game) return;
-
-    // Animate open
     translateY.setValue(SHEET_HEIGHT);
     backdropOpacity.setValue(0);
     Animated.parallel([
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 1,
-        duration: 250,
-        useNativeDriver: true,
-      }),
+      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
     ]).start();
+  }, [game.id]);
 
-    // Fetch boxscore
-    setBoxscore(null);
-    setError(null);
-    setLoading(true);
-    fetchBoxscore(game.gameId, game.sport)
-      .then((data) => setBoxscore(data as BoxscoreData))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.gameId]);
-
-  if (!game) return null;
-
-  const sport = game.sport?.toLowerCase() ?? '';
-  const isMLB = /mlb|baseball/i.test(sport);
-
-  // Use boxscore data when available, fall back to card data
-  const awayTeam: TeamScore = boxscore?.awayTeam ?? {
-    id: '',
-    name: game.awayTeam.name,
-    abbreviation: game.awayTeam.abbreviation,
-    logo: game.awayTeam.logo,
-    score: game.awayScore,
-  };
-  const homeTeam: TeamScore = boxscore?.homeTeam ?? {
-    id: '',
-    name: game.homeTeam.name,
-    abbreviation: game.homeTeam.abbreviation,
-    logo: game.homeTeam.logo,
-    score: game.homeScore,
-  };
-
-  const statusLabel = boxscore?.period ?? game.period ?? '';
-  const statusDetail = boxscore?.status ?? game.status;
+  // ── Team press handlers ──
+  function pressAway() {
+    const teamId = game.isHome ? game.opponent.id : (game.seattleTeam.espnId || game.seattleTeam.id);
+    const teamName = game.isHome ? game.opponent.name : game.seattleTeam.name;
+    setTeamSheet({ teamId, teamName, teamLogo: awayLogo, league: game.league });
+  }
+  function pressHome() {
+    const teamId = game.isHome ? (game.seattleTeam.espnId || game.seattleTeam.id) : game.opponent.id;
+    const teamName = game.isHome ? game.seattleTeam.name : game.opponent.name;
+    setTeamSheet({ teamId, teamName, teamLogo: homeLogo, league: game.league });
+  }
 
   return (
-    <Modal
-      transparent
-      visible
-      animationType="none"
-      onRequestClose={closeSheet}
-      statusBarTranslucent
-    >
-      <View style={StyleSheet.absoluteFillObject}>
-        {/* Backdrop */}
-        <TouchableOpacity
-          style={StyleSheet.absoluteFillObject}
-          activeOpacity={1}
-          onPress={closeSheet}
-        >
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFillObject,
-              { backgroundColor: 'rgba(0,0,0,0.7)', opacity: backdropOpacity },
-            ]}
-          />
-        </TouchableOpacity>
+    <>
+      <Modal transparent visible animationType="none" onRequestClose={closeSheet} statusBarTranslucent>
+        <View style={StyleSheet.absoluteFillObject}>
+          {/* Backdrop */}
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={closeSheet}>
+            <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.7)', opacity: backdropOpacity }]} />
+          </TouchableOpacity>
 
-        {/* Sheet */}
-        <Animated.View
-          style={[styles.sheet, { transform: [{ translateY }] }]}
-          // Consume all touches so they don't fall through to the backdrop
-          onStartShouldSetResponder={() => true}
-        >
-          {/* Drag handle */}
-          <View {...panResponder.panHandlers} style={styles.dragHandleArea}>
-            <View style={styles.dragHandle} />
-          </View>
-
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
-            {/* Status line */}
-            <View style={styles.statusBar}>
-              {!!statusLabel && (
-                <Text style={styles.statusPeriod}>{statusLabel}</Text>
-              )}
-              {!!statusLabel && !!statusDetail && (
-                <Text style={styles.statusDot}>·</Text>
-              )}
-              <Text style={styles.statusDetail}>{statusDetail}</Text>
+          {/* Sheet */}
+          <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]} onStartShouldSetResponder={() => true}>
+            {/* Drag handle */}
+            <View {...panResponder.panHandlers} style={styles.dragArea}>
+              <View style={styles.dragHandle} />
             </View>
 
-            {/* Score header: Away @ Home */}
-            <View style={styles.scoreHeader}>
-              <TeamHeaderBlock
-                team={awayTeam}
-                onPress={
-                  onTeamPress
-                    ? () =>
-                        onTeamPress({
-                          id: awayTeam.id,
-                          name: awayTeam.name,
-                          abbreviation: awayTeam.abbreviation,
-                          logo: awayTeam.logo,
-                          sport,
-                        })
-                    : undefined
-                }
-              />
-              <View style={styles.vsBlock}>
-                <Text style={styles.vsText}>@</Text>
+            {/* Close button */}
+            <TouchableOpacity style={styles.closeBtn} onPress={closeSheet}>
+              <Text style={styles.closeBtnText}>✕</Text>
+            </TouchableOpacity>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+
+              {/* ── SCOREBOARD HERO ── */}
+              <View style={styles.hero}>
+
+                {/* Away team */}
+                <TouchableOpacity style={styles.teamCol} onPress={pressAway} activeOpacity={0.75}>
+                  {awayLogo
+                    ? <Image source={{ uri: awayLogo }} style={[styles.teamLogo, hasScore && homeWon && styles.logoDim]} resizeMode="contain" />
+                    : <View style={[styles.teamLogoFallback, hasScore && homeWon && styles.logoDim]}>
+                        <Text style={styles.teamLogoText}>{awayAbbr}</Text>
+                      </View>
+                  }
+                  <Text style={[styles.teamName, hasScore && homeWon && styles.loserText]} numberOfLines={1}>{awayName}</Text>
+                  <Text style={styles.teamAbbr}>{awayAbbr}</Text>
+                  {(awayRecord || awayDetail) && (
+                    <Text style={styles.teamRecord}>
+                      {awayRecord ? formatRecord(awayRecord) : awayDetail ? `${awayDetail.wins}–${awayDetail.losses}` : ''}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+                {/* Center: score or vs */}
+                <View style={styles.centerBlock}>
+                  {hasScore ? (
+                    <>
+                      <View style={styles.scoreRow}>
+                        <Text style={[styles.scoreNum, hasScore && homeWon && styles.scoreLoser]}>{awayScore}</Text>
+                        <Text style={styles.scoreDash}>–</Text>
+                        <Text style={[styles.scoreNum, hasScore && awayWon && styles.scoreLoser]}>{homeScore}</Text>
+                      </View>
+                      <View style={styles.statusRow}>
+                        {isLive ? (
+                          <>
+                            <Animated.View style={[styles.liveDot, { opacity: pulse }]} />
+                            <Text style={styles.liveLabel}>LIVE</Text>
+                            {liveDetail ? <Text style={styles.livePeriod}>· {liveDetail}</Text> : null}
+                          </>
+                        ) : (
+                          <Text style={styles.finalLabel}>FINAL</Text>
+                        )}
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.vsText}>vs</Text>
+                      <View style={{ alignItems: 'center', gap: 2, marginTop: 6 }}>
+                        <Text style={styles.kickoffTime}>
+                          {parseKickoff(game.kickoff).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        </Text>
+                        <Text style={styles.kickoffDate}>{fmtDate(game.kickoff)}</Text>
+                      </View>
+                    </>
+                  )}
+                </View>
+
+                {/* Home team */}
+                <TouchableOpacity style={styles.teamCol} onPress={pressHome} activeOpacity={0.75}>
+                  {homeLogo
+                    ? <Image source={{ uri: homeLogo }} style={[styles.teamLogo, hasScore && awayWon && styles.logoDim]} resizeMode="contain" />
+                    : <View style={[styles.teamLogoFallback, hasScore && awayWon && styles.logoDim]}>
+                        <Text style={styles.teamLogoText}>{homeAbbr}</Text>
+                      </View>
+                  }
+                  <Text style={[styles.teamName, hasScore && awayWon && styles.loserText]} numberOfLines={1}>{homeName}</Text>
+                  <Text style={styles.teamAbbr}>{homeAbbr}</Text>
+                  {(homeRecord || homeDetail) && (
+                    <Text style={styles.teamRecord}>
+                      {homeRecord ? formatRecord(homeRecord) : homeDetail ? `${homeDetail.wins}–${homeDetail.losses}` : ''}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
               </View>
-              <TeamHeaderBlock
-                team={homeTeam}
-                onPress={
-                  onTeamPress
-                    ? () =>
-                        onTeamPress({
-                          id: homeTeam.id,
-                          name: homeTeam.name,
-                          abbreviation: homeTeam.abbreviation,
-                          logo: homeTeam.logo,
-                          sport,
-                        })
-                    : undefined
-                }
-              />
-            </View>
 
-            {/* Loading */}
-            {loading && (
-              <View style={styles.loadingBlock}>
-                <ActivityIndicator size="small" color={ACCENT} />
-                <Text style={styles.loadingText}>Loading details…</Text>
-              </View>
-            )}
+              {/* ── VENUE + BROADCAST ── */}
+              {(game.venue?.city || game.broadcast) && (
+                <View style={styles.venueRow}>
+                  {game.venue?.city ? (
+                    <Text style={styles.venueTxt}>
+                      📍 {game.venue.name ? `${game.venue.name}, ` : ''}{game.venue.city}{game.venue.state ? `, ${game.venue.state}` : ''}
+                    </Text>
+                  ) : null}
+                  {game.broadcast ? <Text style={styles.venueTxt}>📺 {game.broadcast}</Text> : null}
+                </View>
+              )}
 
-            {/* Error */}
-            {!!error && (
-              <View style={styles.errorBlock}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            )}
+              {/* Divider */}
+              <View style={styles.hairline} />
 
-            {/* Line Score */}
-            {boxscore?.lineScore && boxscore.lineScore.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Line Score</Text>
-                <LineScoreTable
-                  lineScore={boxscore.lineScore}
-                  awayAbbr={awayTeam.abbreviation}
-                  homeAbbr={homeTeam.abbreviation}
-                  awayTotal={awayTeam.score}
-                  homeTotal={homeTeam.score}
-                  sport={sport}
-                />
-              </View>
-            )}
+              {/* ── TEAM CONTEXT (form + standings) ── */}
+              {(seaDetail || oppDetail) && (
+                <View style={styles.contextRow}>
+                  <View style={{ flex: 1 }}>
+                    <TeamContext name={awayName} color={awayColor} detail={awayDetail} />
+                  </View>
+                  <View style={styles.contextDivider} />
+                  <View style={{ flex: 1 }}>
+                    <TeamContext name={homeName} color={homeColor} detail={homeDetail} />
+                  </View>
+                </View>
+              )}
 
-            {/* Top Performers */}
-            {boxscore?.topPerformers && (
-              <PerformersSection
-                awayAbbr={awayTeam.abbreviation}
-                homeAbbr={homeTeam.abbreviation}
-                away={boxscore.topPerformers.away}
-                home={boxscore.topPerformers.home}
-              />
-            )}
+              <View style={{ height: 40 }} />
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
 
-            {/* Pitching (MLB only) */}
-            {isMLB && boxscore?.pitching && (
-              <PitchingSection
-                awayAbbr={awayTeam.abbreviation}
-                homeAbbr={homeTeam.abbreviation}
-                away={boxscore.pitching.away}
-                home={boxscore.pitching.home}
-              />
-            )}
-
-            <View style={{ height: 40 }} />
-          </ScrollView>
-        </Animated.View>
-      </View>
-    </Modal>
+      {/* Nested TeamDetailSheet */}
+      {teamSheet && (
+        <TeamDetailSheet
+          teamId={teamSheet.teamId}
+          teamName={teamSheet.teamName}
+          teamLogo={teamSheet.teamLogo}
+          league={teamSheet.league}
+          onClose={() => setTeamSheet(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -502,247 +418,58 @@ export default function GameDetailSheet({ game, onClose, onTeamPress }: Props) {
 
 const styles = StyleSheet.create({
   sheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    position: 'absolute', bottom: 0, left: 0, right: 0,
     height: SHEET_HEIGHT,
-    backgroundColor: SURFACE,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: BG,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
-  dragHandleArea: {
-    alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 8,
+  dragArea: { alignItems: 'center', paddingTop: 12, paddingBottom: 6 },
+  dragHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' },
+  closeBtn: {
+    position: 'absolute', top: 12, right: 16,
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: BORDER_D,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
+  closeBtnText: { color: 'rgba(255,255,255,0.6)', fontSize: 13 },
+  scroll: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40 },
+
+  // Hero
+  hero: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16, gap: 4 },
+  teamCol: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 8 },
+  teamLogo: { width: 52, height: 52 },
+  teamLogoFallback: { width: 52, height: 52, borderRadius: 8, backgroundColor: SURFACE2, alignItems: 'center', justifyContent: 'center' },
+  teamLogoText: { color: TEXT_FAINT, fontSize: 11, fontWeight: '700' },
+  logoDim: { opacity: 0.35 },
+  teamName: { color: TEXT, fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  loserText: { color: LOSER },
+  teamAbbr: { color: TEXT_FAINT, fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: -4 },
+  teamRecord: { color: TEXT_FAINT, fontSize: 11 },
+
+  // Score center
+  centerBlock: { alignItems: 'center', justifyContent: 'flex-start', paddingTop: 12, minWidth: 90, gap: 4 },
+  scoreRow: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
+  scoreNum: { color: TEXT, fontSize: 62, fontWeight: '900', letterSpacing: -1, lineHeight: 68 },
+  scoreLoser: { color: LOSER },
+  scoreDash: { color: BORDER, fontSize: 28, fontWeight: '900', marginHorizontal: 2 },
+  vsText: { color: BORDER, fontSize: 28, fontWeight: '900' },
+  kickoffTime: { color: TEXT, fontSize: 15, fontWeight: '700' },
+  kickoffDate: { color: TEXT_FAINT, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8 },
 
   // Status
-  statusBar: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 6,
-  },
-  statusPeriod: {
-    color: ACCENT,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  statusDot: {
-    color: TEXT_FAINT,
-    fontSize: 13,
-  },
-  statusDetail: {
-    color: TEXT_MUTED,
-    fontSize: 13,
-    fontWeight: '500',
-  },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef4444' },
+  liveLabel: { color: '#f87171', fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
+  livePeriod: { color: TEXT_FAINT, fontSize: 11 },
+  finalLabel: { color: TEXT_FAINT, fontSize: 10, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
 
-  // Score header
-  scoreHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    marginBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-  },
-  teamBlock: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 6,
-  },
-  teamLogo: {
-    width: 60,
-    height: 60,
-  },
-  teamLogoFallback: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: SURFACE2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  teamLogoText: {
-    color: TEXT_FAINT,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  teamAbbr: {
-    color: TEXT_MUTED,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  teamScore: {
-    color: TEXT,
-    fontSize: 34,
-    fontWeight: '800',
-    lineHeight: 40,
-  },
-  vsBlock: {
-    paddingHorizontal: 8,
-  },
-  vsText: {
-    color: TEXT_FAINT,
-    fontSize: 18,
-    fontWeight: '600',
-  },
+  // Venue
+  venueRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: 14 },
+  venueTxt: { color: TEXT_FAINT, fontSize: 11 },
+  hairline: { height: 1, backgroundColor: 'rgba(113,113,122,0.3)', marginBottom: 16 },
 
-  // Loading / Error
-  loadingBlock: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    gap: 8,
-  },
-  loadingText: {
-    color: TEXT_FAINT,
-    fontSize: 13,
-  },
-  errorBlock: {
-    padding: 14,
-    backgroundColor: 'rgba(127,29,29,0.2)',
-    borderRadius: 10,
-    marginBottom: 16,
-  },
-  errorText: {
-    color: '#f87171',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-
-  // Sections
-  section: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    color: TEXT_FAINT,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: 10,
-  },
-  subsectionTitle: {
-    color: TEXT_FAINT,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-
-  // Line score table
-  lineScoreScroll: {
-    marginHorizontal: -4,
-  },
-  lsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  lsCell: {
-    width: 28,
-    textAlign: 'center',
-    paddingVertical: 5,
-  },
-  lsTeamCell: {
-    width: 44,
-    textAlign: 'left',
-    paddingLeft: 4,
-  },
-  lsTotalCell: {
-    width: 36,
-    borderLeftWidth: 1,
-    borderLeftColor: BORDER_D,
-  },
-  lsHeaderText: {
-    color: TEXT_FAINT,
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  lsBodyText: {
-    color: TEXT_MUTED,
-    fontSize: 13,
-  },
-  lsBold: {
-    fontWeight: '700',
-    color: TEXT,
-  },
-
-  // Top Performers
-  performerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 7,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: BORDER,
-  },
-  performerName: {
-    color: TEXT,
-    fontSize: 13,
-    fontWeight: '600',
-    width: 120,
-    marginRight: 8,
-  },
-  performerStats: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 14,
-  },
-  performerStat: {
-    alignItems: 'center',
-  },
-  performerStatVal: {
-    color: TEXT,
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  performerStatKey: {
-    color: TEXT_FAINT,
-    fontSize: 9,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  // Pitching
-  pitchingCols: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  pitchingCol: {
-    flex: 1,
-  },
-  pitchingColRight: {
-    borderLeftWidth: 1,
-    borderLeftColor: BORDER_D,
-    paddingLeft: 12,
-  },
-  pitcherRow: {
-    marginBottom: 8,
-  },
-  pitcherName: {
-    color: TEXT,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  pitcherStat: {
-    color: TEXT_MUTED,
-    fontSize: 12,
-    marginTop: 1,
-  },
+  // Context
+  contextRow: { flexDirection: 'row', gap: 8 },
+  contextDivider: { width: 1, backgroundColor: 'rgba(113,113,122,0.3)' },
 });

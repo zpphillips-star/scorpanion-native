@@ -5,12 +5,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GameCard from '../components/GameCard';
-import GameDetailSheet, { SheetGame } from '../components/GameDetailSheet';
-import TeamDetailSheet from '../components/TeamDetailSheet';
+import GameDetailSheet from '../components/GameDetailSheet';
 import { fetchSchedule } from '../lib/api';
 import { normalizeGame, NormalizedGame } from '../lib/normalizeGame';
 import { BG, SURFACE, SURFACE2, SURFACE3, BORDER, TEXT, TEXT_FAINT, TEXT_MUTED, ACCENT, LIVE } from '../constants/theme';
-import type { SheetTeam } from '../lib/types';
+import type { ScorpanionGame } from '../lib/types';
 
 const DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
@@ -42,8 +41,14 @@ export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState<string>(toDateStr(now));
   const [allGames, setAllGames] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedGame, setSelectedGame] = useState<SheetGame | null>(null);
-  const [selectedTeam, setSelectedTeam] = useState<SheetTeam | null>(null);
+  const [selectedGame, setSelectedGame] = useState<ScorpanionGame | null>(null);
+
+  // Raw game lookup
+  const rawById = React.useMemo(() => {
+    const map = new Map<string, any>();
+    for (const g of allGames) { if (g.id) map.set(String(g.id), g); }
+    return map;
+  }, [allGames]);
 
   // Load all games once
   useEffect(() => {
@@ -179,7 +184,7 @@ export default function CalendarScreen() {
             <GameCard
               key={g.gameId}
               {...g}
-              onPress={() => setSelectedGame(g)}
+              onPress={() => { const raw = rawById.get(g.gameId); if (raw) setSelectedGame(raw); }}
             />
           ))
         )}
@@ -189,13 +194,9 @@ export default function CalendarScreen() {
 
       {selectedGame && (
         <GameDetailSheet
-          game={selectedGame}
+          game={selectedGame as any}
           onClose={() => setSelectedGame(null)}
-          onTeamPress={(team) => { setSelectedGame(null); setSelectedTeam(team); }}
         />
-      )}
-      {selectedTeam && (
-        <TeamDetailSheet team={selectedTeam} onClose={() => setSelectedTeam(null)} />
       )}
     </SafeAreaView>
   );
