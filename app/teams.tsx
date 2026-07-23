@@ -155,14 +155,16 @@ function USMap({
 // ─── Sport filter tabs ────────────────────────────────────────────────────────
 
 const SPORT_TABS = [
-  { id: 'ALL', label: 'All' },
-  { id: 'NFL', label: 'NFL' },
-  { id: 'NBA', label: 'NBA' },
-  { id: 'NHL', label: 'NHL' },
-  { id: 'MLB', label: 'MLB' },
-  { id: 'WNBA', label: 'WNBA' },
-  { id: 'MLS', label: 'MLS' },
-  { id: 'NWSL', label: 'NWSL' },
+  { id: 'ALL',  label: 'All'   },
+  { id: 'NFL',  label: 'NFL'   },
+  { id: 'NBA',  label: 'NBA'   },
+  { id: 'NHL',  label: 'NHL'   },
+  { id: 'MLB',  label: 'MLB'   },
+  { id: 'WNBA', label: 'WNBA'  },
+  { id: 'MLS',  label: 'MLS'   },
+  { id: 'NWSL', label: 'NWSL'  },
+  { id: 'NCAA', label: 'NCAA'  },
+  { id: 'GOLF', label: 'Golf'  },
 ];
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
@@ -180,9 +182,14 @@ export default function TeamsScreen() {
   }, []);
 
   const filteredTeams = useMemo(() => {
-    let base = activeTab === 'ALL'
-      ? ALL_PRO_TEAMS
-      : ALL_PRO_TEAMS.filter(t => t.league === activeTab);
+    let base: typeof ALL_PRO_TEAMS;
+    if (activeTab === 'ALL') {
+      base = ALL_PRO_TEAMS;
+    } else if (activeTab === 'GOLF') {
+      base = ALL_PRO_TEAMS.filter(t => t.league === 'PGA' || t.league === 'LPGA');
+    } else {
+      base = ALL_PRO_TEAMS.filter(t => t.league === activeTab);
+    }
     if (selectedState) {
       base = base.filter(t => t.state === selectedState);
     }

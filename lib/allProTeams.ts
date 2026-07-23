@@ -5,11 +5,12 @@ export interface ProTeam {
   abbr: string
   city: string
   state: string
-  league: 'NFL' | 'NBA' | 'NHL' | 'MLB' | 'WNBA' | 'MLS' | 'NWSL'
+  league: 'NFL' | 'NBA' | 'NHL' | 'MLB' | 'WNBA' | 'MLS' | 'NWSL' | 'PGA' | 'LPGA' | 'NCAA'
   sport: string
   primaryColor: string
   logo: string
   espnId: string
+  optInOnly?: boolean  // tours/leagues the user must explicitly opt in to
 }
 
 export const ALL_PRO_TEAMS: ProTeam[] = [
@@ -209,6 +210,28 @@ export const ALL_PRO_TEAMS: ProTeam[] = [
   { id: 'nwsl-utah',       name: 'Utah Royals FC',          shortName: 'Utah Royals',  abbr: 'UTA', city: 'Sandy',           state: 'UT', league: 'NWSL', sport: 'soccer', primaryColor: '#B30838', logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/15365.png', espnId: '15365' },
   { id: 'nwsl-washington', name: 'Washington Spirit',       shortName: 'Spirit',       abbr: 'WSH', city: 'Washington',      state: 'DC', league: 'NWSL', sport: 'soccer', primaryColor: '#012169', logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/10606.png', espnId: '10606' },
   { id: 'nwsl-boston',     name: 'Boston Legacy FC',        shortName: 'Boston Legacy',abbr: 'BOS', city: 'Boston',          state: 'MA', league: 'NWSL', sport: 'soccer', primaryColor: '#0C2340', logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/131562.png', espnId: '131562' },
+
+  // ── Golf Tours (opt-in only) ──
+  { id: 'pga',  name: 'PGA Tour',  shortName: 'PGA Tour', abbr: 'PGA',  city: 'Ponte Vedra',   state: 'FL', league: 'PGA',  sport: 'golf', primaryColor: '#003087', logo: 'https://a.espncdn.com/combiner/i?img=/i/teamlogos/leagues/500-dark/pgatour.png', espnId: '', optInOnly: true },
+  { id: 'lpga', name: 'LPGA Tour', shortName: 'LPGA',     abbr: 'LPGA', city: 'Daytona Beach', state: 'FL', league: 'LPGA', sport: 'golf', primaryColor: '#b5006e', logo: 'https://a.espncdn.com/combiner/i?img=/i/teamlogos/leagues/500-dark/lpga.png',      espnId: '', optInOnly: true },
+
+  // ── NCAA — Washington Huskies ──
+  { id: 'uw-football',   name: 'Washington Huskies',           shortName: 'Huskies',       abbr: 'UW',  city: 'Seattle', state: 'WA', league: 'NCAA', sport: 'football',   primaryColor: '#33006F', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500/264.png',      espnId: '264'  },
+  { id: 'uw-basketball', name: 'Washington Huskies (MBB)',     shortName: 'Huskies (MBB)', abbr: 'UW',  city: 'Seattle', state: 'WA', league: 'NCAA', sport: 'basketball', primaryColor: '#33006F', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500/264.png',      espnId: '264'  },
+  { id: 'uw-wbb',        name: 'Washington Huskies (WBB)',     shortName: 'Huskies (WBB)', abbr: 'UW',  city: 'Seattle', state: 'WA', league: 'NCAA', sport: 'basketball', primaryColor: '#33006F', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500/264.png',      espnId: '264'  },
+  { id: 'uw-volleyball', name: 'Washington Huskies (VB)',      shortName: 'Huskies (VB)',  abbr: 'UW',  city: 'Seattle', state: 'WA', league: 'NCAA', sport: 'volleyball', primaryColor: '#33006F', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500/264.png',      espnId: '264'  },
+  { id: 'uw-baseball',   name: 'Washington Huskies (BB)',      shortName: 'Huskies (BB)',  abbr: 'UW',  city: 'Seattle', state: 'WA', league: 'NCAA', sport: 'baseball',   primaryColor: '#33006F', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500/264.png',      espnId: '133'  },
+  { id: 'uw-lacrosse',   name: 'Washington Huskies (LAX)',     shortName: 'Huskies (LAX)', abbr: 'UW',  city: 'Seattle', state: 'WA', league: 'NCAA', sport: 'lacrosse',   primaryColor: '#33006F', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500/264.png',      espnId: '264'  },
+  { id: 'uw-softball',   name: 'Washington Huskies (SB)',      shortName: 'Huskies (SB)',  abbr: 'UW',  city: 'Seattle', state: 'WA', league: 'NCAA', sport: 'softball',   primaryColor: '#33006F', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500/264.png',      espnId: '264'  },
+  { id: 'uw-soccer',     name: 'Washington Huskies (SOC)',     shortName: 'Huskies (SOC)', abbr: 'UW',  city: 'Seattle', state: 'WA', league: 'NCAA', sport: 'soccer',     primaryColor: '#33006F', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500/264.png',      espnId: '264'  },
+
+  // ── NCAA — Washington State Cougars ──
+  { id: 'wsu-football',  name: 'Washington State Cougars',     shortName: 'Cougars',       abbr: 'WSU', city: 'Pullman', state: 'WA', league: 'NCAA', sport: 'football',   primaryColor: '#981E32', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500-dark/265.png', espnId: '265'  },
+  { id: 'wsu-mbb',       name: 'Washington State Cougars (MBB)', shortName: 'Cougars (MBB)', abbr: 'WSU', city: 'Pullman', state: 'WA', league: 'NCAA', sport: 'basketball', primaryColor: '#981E32', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500-dark/265.png', espnId: '265'  },
+  { id: 'wsu-wbb',       name: 'Washington State Cougars (WBB)', shortName: 'Cougars (WBB)', abbr: 'WSU', city: 'Pullman', state: 'WA', league: 'NCAA', sport: 'basketball', primaryColor: '#981E32', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500-dark/265.png', espnId: '265'  },
+  { id: 'wsu-baseball',  name: 'Washington State Cougars (BB)', shortName: 'Cougars (BB)', abbr: 'WSU', city: 'Pullman', state: 'WA', league: 'NCAA', sport: 'baseball',   primaryColor: '#981E32', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500-dark/265.png', espnId: '134'  },
+  { id: 'wsu-volleyball',name: 'Washington State Cougars (VB)', shortName: 'Cougars (VB)', abbr: 'WSU', city: 'Pullman', state: 'WA', league: 'NCAA', sport: 'volleyball', primaryColor: '#981E32', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500-dark/265.png', espnId: '265'  },
+  { id: 'seattleu',      name: 'Seattle University Redhawks',   shortName: 'Redhawks',      abbr: 'SU',  city: 'Seattle', state: 'WA', league: 'NCAA', sport: 'basketball', primaryColor: '#AA0000', logo: 'https://a.espncdn.com/i/teamlogos/ncaa/500/2547.png',     espnId: '2547' },
 ]
 
 export function getTeamsByState(state: string): ProTeam[] {

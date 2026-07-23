@@ -65,3 +65,12 @@ export async function fetchTeamDetail(teamId: string, sport?: string) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
+
+/** Fetch PGA or LPGA tournaments from the webapp API.
+ *  Returns PGATournament[] — active/upcoming/recent tournaments. */
+export async function fetchGolf(tour: 'pga' | 'lpga') {
+  const url = `${SCORPANION}/api/${tour}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
