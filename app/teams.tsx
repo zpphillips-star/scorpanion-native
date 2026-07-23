@@ -112,7 +112,7 @@ export default function TeamsScreen() {
             const following = isFollowing(item.id);
             const name = item.displayName || item.name || item.shortDisplayName || 'Unknown';
             const logo = item.logos?.[0]?.href || item.logo;
-            const abbr: string = item.abbreviation ?? '';
+            const abbr: string = item.abbr ?? item.abbreviation ?? '';
             const sport: string = (item.sport ?? item.league ?? selectedSport ?? '').toLowerCase();
 
             return (
