@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Image, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import {
-  BG, SURFACE, SURFACE2, BORDER, BORDER_D,
-  TEXT, TEXT_MUTED, TEXT_FAINT,
-  ACCENT, LIVE, WIN, LOSS, FINAL,
+  SURFACE, SURFACE2, BORDER,
+  TEXT, TEXT_FAINT,
+  LIVE, WIN, LOSS,
 } from '../constants/theme';
 
 interface Team {
@@ -21,21 +21,12 @@ interface GameCardProps {
   status: string;
   period?: string;
   sport: string;
-  /** Human-readable sport label e.g. "MLB", "NBA" */
   sportLabel?: string;
   gameId: string;
   onPress?: () => void;
-  /** Formatted local game time, shown for scheduled games */
   gameTime?: string;
-  /** Last ≤5 results for the home team, most recent first */
   formDots?: Array<'W' | 'L' | 'T'>;
 }
-
-const DOT_COLORS: Record<'W' | 'L' | 'T', string> = {
-  W: WIN,
-  L: LOSS,
-  T: TEXT_FAINT,
-};
 
 export default function GameCard({
   awayTeam,
@@ -49,271 +40,297 @@ export default function GameCard({
   gameId: _gameId,
   onPress,
   gameTime,
-  formDots,
 }: GameCardProps) {
-  const lower = status?.toLowerCase() ?? '';
-  const isLive =
-    lower.includes('progress') ||
-    lower.includes('inning') ||
-    lower.includes('quarter') ||
-    lower.includes('period') ||
-    lower.includes('half') ||
-    lower === 'live';
-  const isFinal    = lower.includes('final');
+  const lower = (status ?? '').toLowerCase();
+  const isLive      = lower === 'live' || lower === 'in progress' ||
+                      lower.includes('progress') || lower.includes('inning') ||
+                      lower.includes('quarter') || lower.includes('period') || lower.includes('half');
+  const isFinal     = lower === 'final' || lower.includes('final');
   const isScheduled = !isLive && !isFinal;
 
-  // Winner detection
-  const awayNum = Number(awayScore);
-  const homeNum = Number(homeScore);
-  const awayWon = isFinal && awayScore !== undefined && awayNum > homeNum;
-  const homeWon = isFinal && homeScore !== undefined && homeNum > awayNum;
+  const hasScore = (isLive || isFinal) && awayScore !== undefined && homeScore !== undefined;
+  const awayNum  = Number(awayScore);
+  const homeNum  = Number(homeScore);
+  const awayWon  = isFinal && hasScore && awayNum > homeNum;
+  const homeWon  = isFinal && hasScore && homeNum > awayNum;
 
-  // ── Pulsing live dot ────────────────────────────────────────────────────────
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  // Pulsing live dot
+  const pulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
-    if (!isLive) { pulseAnim.setValue(1); return; }
-    const animation = Animated.loop(
+    if (!isLive) { pulse.setValue(1); return; }
+    const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 0.25, duration: 700, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1,    duration: 700, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.2, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1,   duration: 700, useNativeDriver: true }),
       ])
     );
-    animation.start();
-    return () => animation.stop();
-  }, [isLive, pulseAnim]);
-
-  const statusColor = isLive ? LIVE : isFinal ? FINAL : TEXT_FAINT;
-  const displayLabel = sportLabel ?? _sport?.toUpperCase() ?? '';
+    anim.start();
+    return () => anim.stop();
+  }, [isLive, pulse]);
 
   return (
-    <TouchableOpacity onPress={onPress} style={[styles.card, isLive && styles.cardLive]} activeOpacity={0.75}>
-      {/* Sport badge + status */}
-      <View style={styles.topRow}>
-        <Text style={styles.sportBadge}>{displayLabel}</Text>
-        <View style={styles.statusRow}>
-          {isLive && (
-            <Animated.View style={[styles.liveDot, { opacity: pulseAnim }]} />
-          )}
-          <Text style={[styles.statusText, { color: statusColor }]}>
-            {period ? `${period} · ${status}` : status}
-          </Text>
-        </View>
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={[
+        styles.card,
+        isLive  && styles.cardLive,
+        isFinal && styles.cardFinal,
+      ]}
+    >
+      {/* Status row — centered at top */}
+      <View style={styles.statusRow}>
+        {isLive ? (
+          <>
+            <Animated.View style={[styles.liveDot, { opacity: pulse }]} />
+            <Text style={styles.liveText}>LIVE</Text>
+            {(period || status) && (
+              <Text style={styles.periodText}>
+                {period ? period : status}
+              </Text>
+            )}
+          </>
+        ) : isFinal ? (
+          <Text style={styles.finalText}>Final</Text>
+        ) : (
+          <Text style={styles.timeText}>{gameTime ?? 'TBD'}</Text>
+        )}
       </View>
 
-      {/* Away team */}
-      <TeamRow
-        team={awayTeam}
-        score={awayScore}
-        won={awayWon}
-        dim={homeWon}
-        hasScore={!isScheduled}
-      />
+      {/* Main row: Away | Score/VS | Home */}
+      <View style={styles.matchup}>
+        {/* Away team */}
+        <TeamBlock
+          team={awayTeam}
+          won={awayWon}
+          lost={isFinal && homeWon}
+        />
 
-      {/* Home team */}
-      <TeamRow
-        team={homeTeam}
-        score={homeScore}
-        won={homeWon}
-        dim={awayWon}
-        hasScore={!isScheduled}
-      />
-
-      {/* Game time (scheduled only) */}
-      {isScheduled && !!gameTime && (
-        <Text style={styles.gameTime}>{gameTime}</Text>
-      )}
-
-      {/* W/L form dots */}
-      {formDots && formDots.length > 0 && (
-        <View style={styles.formDots}>
-          {formDots.slice(0, 5).map((r, i) => (
-            <View key={i} style={[styles.formDot, { backgroundColor: DOT_COLORS[r] }]} />
-          ))}
+        {/* Center score or VS */}
+        <View style={styles.scoreBlock}>
+          {hasScore ? (
+            <View style={styles.scoreRow}>
+              <Text style={[
+                styles.score,
+                isFinal && homeWon && styles.scoreDim,
+              ]}>
+                {awayScore}
+              </Text>
+              <Text style={styles.scoreSep}>–</Text>
+              <Text style={[
+                styles.score,
+                isFinal && awayWon && styles.scoreDim,
+              ]}>
+                {homeScore}
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.vs}>vs</Text>
+          )}
+          {isFinal && <Text style={styles.ftLabel}>FT</Text>}
         </View>
+
+        {/* Home team */}
+        <TeamBlock
+          team={homeTeam}
+          won={homeWon}
+          lost={isFinal && awayWon}
+        />
+      </View>
+
+      {/* Sport label footer */}
+      {sportLabel && (
+        <Text style={styles.sportLabel}>{sportLabel}</Text>
       )}
     </TouchableOpacity>
   );
 }
 
-// ── Team row sub-component ────────────────────────────────────────────────────
-
-function TeamRow({
-  team,
-  score,
-  won,
-  dim,
-  hasScore,
-}: {
-  team: Team;
-  score?: number | string;
-  won: boolean;
-  dim: boolean;
-  hasScore: boolean;
-}) {
-  const nameColor = dim ? TEXT_FAINT : TEXT;
-  const scoreColor = won ? TEXT : dim ? TEXT_FAINT : TEXT_MUTED;
-
+function TeamBlock({ team, won, lost }: { team: Team; won: boolean; lost: boolean }) {
   return (
-    <View style={styles.teamRow}>
-      <View style={styles.teamLeft}>
-        {team.logo ? (
-          <Image
-            source={{ uri: team.logo }}
-            style={styles.teamLogo}
-            resizeMode="contain"
-          />
-        ) : (
-          <View style={styles.teamLogoFallback}>
-            <Text style={styles.teamLogoText}>{team.abbreviation?.slice(0, 2)}</Text>
-          </View>
-        )}
-        <Text style={[styles.teamName, { color: nameColor }]} numberOfLines={1}>
-          {team.name || team.abbreviation}
-        </Text>
-        {won && <View style={styles.winIndicator} />}
-      </View>
-      {hasScore && score !== undefined && (
-        <Text style={[styles.score, { color: scoreColor, fontWeight: won ? '800' : '600' }]}>
-          {score}
-        </Text>
+    <View style={styles.teamBlock}>
+      {team.logo ? (
+        <Image
+          source={{ uri: team.logo }}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+      ) : (
+        <View style={styles.logoFallback}>
+          <Text style={styles.logoFallbackText}>{team.abbreviation?.slice(0, 3)}</Text>
+        </View>
       )}
+      <Text
+        style={[styles.teamName, lost && styles.teamNameDim]}
+        numberOfLines={1}
+      >
+        {team.name}
+      </Text>
+      <Text style={styles.teamAbbr}>{team.abbreviation}</Text>
+      {won && <View style={styles.winDot} />}
     </View>
   );
 }
-
-// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: SURFACE,
     borderWidth: 1,
     borderColor: BORDER,
-    borderRadius: 12,
+    borderRadius: 14,
     marginHorizontal: 12,
-    marginBottom: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    marginBottom: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
   },
   cardLive: {
-    borderLeftWidth: 2,
-    borderLeftColor: LIVE,
-    backgroundColor: 'rgba(255,180,0,0.04)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#ef4444',
   },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+  cardFinal: {
+    opacity: 0.85,
   },
-  sportBadge: {
-    color: TEXT_FAINT,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-  },
+
+  // Status
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 5,
+    marginBottom: 10,
   },
   liveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: LIVE,
+    backgroundColor: '#ef4444',
   },
-  statusText: {
+  liveText: {
+    color: '#f87171',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  periodText: {
+    color: TEXT_FAINT,
     fontSize: 11,
     fontWeight: '600',
-    letterSpacing: 0.2,
   },
-  teamRow: {
+  finalText: {
+    color: TEXT_FAINT,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  timeText: {
+    color: '#f0f0f8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  // Matchup layout
+  matchup: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    paddingHorizontal: 8,
   },
-  teamLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  // Team block
+  teamBlock: {
     flex: 1,
-    gap: 10,
+    alignItems: 'center',
+    gap: 6,
   },
-  teamLogo: {
-    width: 26,
-    height: 26,
+  logo: {
+    width: 52,
+    height: 52,
   },
-  teamLogoFallback: {
-    width: 26,
-    height: 26,
-    borderRadius: 4,
+  logoFallback: {
+    width: 52,
+    height: 52,
+    borderRadius: 8,
     backgroundColor: SURFACE2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  teamLogoText: {
+  logoFallbackText: {
     color: TEXT_FAINT,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
   },
   teamName: {
-    fontSize: 14,
-    fontWeight: '600',
-    flex: 1,
+    color: '#f0f0f8',
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
   },
-  winIndicator: {
+  teamNameDim: {
+    color: '#3a5070',
+  },
+  teamAbbr: {
+    color: '#3a5070',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: -4,
+  },
+  winDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
     backgroundColor: WIN,
-    marginLeft: 4,
+  },
+
+  // Score center
+  scoreBlock: {
+    width: 90,
+    alignItems: 'center',
+    gap: 2,
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
   },
   score: {
+    color: '#f0f0f8',
+    fontSize: 36,
+    fontWeight: '900',
+    letterSpacing: -1,
+    fontVariant: ['tabular-nums'],
+  },
+  scoreDim: {
+    color: '#3a5070',
+  },
+  scoreSep: {
+    color: '#1e3050',
     fontSize: 20,
-    letterSpacing: -0.5,
-    minWidth: 28,
-    textAlign: 'right',
+    fontWeight: '800',
   },
-  gameTime: {
-    color: TEXT_FAINT,
-    fontSize: 11,
+  vs: {
+    color: '#1e3050',
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  ftLabel: {
+    color: '#3a5070',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+
+  // Footer
+  sportLabel: {
+    color: '#2d4a6b',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
     textAlign: 'center',
-    marginTop: 6,
-    letterSpacing: 0.3,
-  },
-  formDots: {
-    flexDirection: 'row',
-    gap: 4,
-    marginTop: 8,
-  },
-  formDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
+    marginTop: 10,
   },
 });
-
-interface Team {
-  id?: string;
-  name: string;
-  abbreviation: string;
-  logo?: string;
-}
-
-interface GameCardProps {
-  awayTeam: Team;
-  homeTeam: Team;
-  awayScore?: number | string;
-  homeScore?: number | string;
-  status: string;
-  period?: string;
-  sport: string;
-  gameId: string;
-  onPress?: () => void;
-  /** Formatted local game time, shown for scheduled games */
-  gameTime?: string;
-  /** Last ≤5 results for the home team, most recent first */
-  formDots?: Array<'W' | 'L' | 'T'>;
-}
-
