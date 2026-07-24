@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Image,
-  FlatList, StyleSheet, Dimensions, ActivityIndicator,
+  TextInput, StyleSheet, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path, G, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, G } from 'react-native-svg';
 import { useSportsData } from '../context/SportsDataContext';
 import { ALL_PRO_TEAMS } from '../lib/allProTeams';
-import type { ProTeam } from '../lib/allProTeams';
-import TeamDetailSheet from '../components/TeamDetailSheet';
-import type { TeamSheetParams } from '../lib/types';
+
+import AppHeader from '../components/AppHeader';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -90,6 +89,14 @@ function decodeTopo(topo: any): StatePath[] {
   return results;
 }
 
+// ─── Decode topojson at module level (synchronous, no async needed) ───────────
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const TOPO_DATA = require('../assets/states-10m.json');
+const STATIC_PATHS: StatePath[] = (() => {
+  try { return decodeTopo(TOPO_DATA); } catch { return []; }
+})();
+
 // ─── US Map component ─────────────────────────────────────────────────────────
 
 function USMap({
@@ -101,23 +108,13 @@ function USMap({
   onStateSelect: (abbr: string) => void;
   teamsPerState: Record<string, number>;
 }) {
-  const [paths, setPaths] = useState<StatePath[]>([]);
-  const [loading, setLoading] = useState(true);
-  const fetched = useRef(false);
+  // Paths are pre-decoded at module load — no async, no spinner, no CDN fallback
+  const paths = STATIC_PATHS;
 
-  useEffect(() => {
-    if (fetched.current) return;
-    fetched.current = true;
-    fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json')
-      .then(r => r.json())
-      .then(topo => { setPaths(decodeTopo(topo)); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (paths.length === 0) {
     return (
       <View style={[styles.mapContainer, { alignItems: 'center', justifyContent: 'center' }]}>
-        <ActivityIndicator size="small" color={ACCENT} />
+        <Text style={{ color: FAINT, fontSize: 12 }}>Map unavailable</Text>
       </View>
     );
   }
@@ -134,14 +131,14 @@ function USMap({
               : hasTeams
               ? 'rgba(255,255,255,0.15)'
               : 'rgba(255,255,255,0.03)';
-            const stroke = isSelected ? '#D95C17' : 'rgba(255,255,255,0.15)';
+            const stroke = isSelected ? '#D95C17' : 'rgba(255,255,255,0.28)';
             return (
               <Path
                 key={abbr}
                 d={d}
                 fill={fill}
                 stroke={stroke}
-                strokeWidth={isSelected ? 1.5 : 0.5}
+                strokeWidth={isSelected ? 2 : 0.5}
                 onPress={() => hasTeams && onStateSelect(selectedState === abbr ? '' : abbr)}
               />
             );
@@ -152,18 +149,31 @@ function USMap({
   );
 }
 
+// ─── League order & labels ────────────────────────────────────────────────────
+
+const LEAGUES = [
+  { id: 'NFL',  label: 'NFL' },
+  { id: 'NBA',  label: 'NBA' },
+  { id: 'MLB',  label: 'MLB' },
+  { id: 'NHL',  label: 'NHL' },
+  { id: 'WNBA', label: 'WNBA' },
+  { id: 'MLS',  label: 'MLS' },
+  { id: 'NWSL', label: 'NWSL' },
+  { id: 'PGA',  label: 'PGA Tour' },
+  { id: 'LPGA', label: 'LPGA Tour' },
+];
+
 // ─── Sport filter tabs ────────────────────────────────────────────────────────
 
 const SPORT_TABS = [
   { id: 'ALL',  label: 'All'   },
   { id: 'NFL',  label: 'NFL'   },
   { id: 'NBA',  label: 'NBA'   },
-  { id: 'NHL',  label: 'NHL'   },
   { id: 'MLB',  label: 'MLB'   },
+  { id: 'NHL',  label: 'NHL'   },
   { id: 'WNBA', label: 'WNBA'  },
   { id: 'MLS',  label: 'MLS'   },
   { id: 'NWSL', label: 'NWSL'  },
-  { id: 'NCAA', label: 'NCAA'  },
   { id: 'GOLF', label: 'Golf'  },
 ];
 
@@ -173,7 +183,7 @@ export default function TeamsScreen() {
   const { followedTeams, toggleFollowTeam, isFollowing } = useSportsData();
   const [activeTab, setActiveTab] = useState('ALL');
   const [selectedState, setSelectedState] = useState<string | null>(null);
-  const [selectedTeam, setSelectedTeam] = useState<TeamSheetParams | null>(null);
+  const [search, setSearch] = useState('');
 
   const teamsPerState = useMemo(() => {
     const map: Record<string, number> = {};
@@ -181,44 +191,77 @@ export default function TeamsScreen() {
     return map;
   }, []);
 
-  const filteredTeams = useMemo(() => {
-    let base: typeof ALL_PRO_TEAMS;
-    if (activeTab === 'ALL') {
-      base = ALL_PRO_TEAMS;
-    } else if (activeTab === 'GOLF') {
-      base = ALL_PRO_TEAMS.filter(t => t.league === 'PGA' || t.league === 'LPGA');
-    } else {
-      base = ALL_PRO_TEAMS.filter(t => t.league === activeTab);
+  // Base filtered by tab + state + search
+  const baseTeams = useMemo(() => {
+    let base = ALL_PRO_TEAMS;
+    if (activeTab === 'GOLF') {
+      base = base.filter(t => t.league === 'PGA' || t.league === 'LPGA');
+    } else if (activeTab !== 'ALL') {
+      base = base.filter(t => t.league === activeTab);
     }
-    if (selectedState) {
-      base = base.filter(t => t.state === selectedState);
+    if (selectedState) base = base.filter(t => t.state === selectedState);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      base = base.filter(t =>
+        t.name.toLowerCase().includes(q) ||
+        t.shortName.toLowerCase().includes(q) ||
+        t.abbr.toLowerCase().includes(q) ||
+        t.city.toLowerCase().includes(q)
+      );
     }
-    return [...base].sort((a, b) => {
-      const af = isFollowing(a.id), bf = isFollowing(b.id);
-      if (af !== bf) return af ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-  }, [activeTab, selectedState, followedTeams]);
+    return base;
+  }, [activeTab, selectedState, search, followedTeams]);
+
+  // Followed section (teams user follows, from baseTeams)
+  const followedSection = useMemo(
+    () => baseTeams.filter(t => isFollowing(t.id)).sort((a, b) => a.name.localeCompare(b.name)),
+    [baseTeams, followedTeams]
+  );
+
+  // League sections — only leagues present in baseTeams, in canonical order
+  const leagueSections = useMemo(() => {
+    const activeLeagues = activeTab === 'ALL' || activeTab === 'GOLF'
+      ? LEAGUES.filter(l => baseTeams.some(t => t.league === l.id))
+      : LEAGUES.filter(l => baseTeams.some(t => t.league === l.id));
+
+    return activeLeagues.map(league => ({
+      ...league,
+      teams: baseTeams
+        .filter(t => t.league === league.id)
+        .sort((a, b) => {
+          const af = isFollowing(a.id), bf = isFollowing(b.id);
+          if (af !== bf) return af ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        }),
+    })).filter(s => s.teams.length > 0);
+  }, [baseTeams, followedTeams]);
 
   const followCount = ALL_PRO_TEAMS.filter(t => isFollowing(t.id)).length;
 
-  function openTeam(team: ProTeam) {
-    setSelectedTeam({
-      teamId: team.espnId,
-      teamName: team.name,
-      teamLogo: team.logo,
-      league: team.league.toLowerCase(),
-    });
-  }
-
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <AppHeader hideFilter />
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>TEAMS</Text>
-          <Text style={styles.headerSub}>Following {followCount} team{followCount !== 1 ? 's' : ''}</Text>
+        {/* Search bar */}
+        <View style={styles.searchRow}>
+          <View style={styles.searchBox}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search teams, cities, leagues..."
+              placeholderTextColor={FAINT}
+              value={search}
+              onChangeText={setSearch}
+              clearButtonMode="while-editing"
+              returnKeyType="search"
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch('')}>
+                <Text style={styles.searchClear}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Sport filter pills */}
@@ -256,35 +299,56 @@ export default function TeamsScreen() {
               <Text style={styles.clearStateText}>✕ {selectedState}</Text>
             </TouchableOpacity>
           )}
+          {/* Map legend + hints */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4, marginTop: 4 }}>
+            <Text style={{ color: FAINT, fontSize: 10 }}>● Has teams</Text>
+            <Text style={{ color: FAINT, fontSize: 10 }}>Pinch to zoom · drag to pan</Text>
+          </View>
         </View>
 
-        {/* Team grid - 3 columns */}
-        <View style={styles.grid}>
-          {filteredTeams.map(team => {
-            const followed = isFollowing(team.id);
-            return (
-              <TouchableOpacity
-                key={team.id}
-                style={[styles.teamCard, followed && styles.teamCardFollowed]}
-                onPress={() => openTeam(team)}
-                activeOpacity={0.75}
-              >
-                {team.logo
-                  ? <Image source={{ uri: team.logo }} style={styles.teamLogo} resizeMode="contain" />
-                  : <View style={styles.teamLogoFallback}>
-                      <Text style={styles.teamLogoText}>{team.abbr}</Text>
-                    </View>
-                }
-                <Text style={styles.teamName} numberOfLines={2}>{team.shortName}</Text>
-                <View style={[styles.leagueBadge]}>
-                  <Text style={styles.leagueText}>{team.league}</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {/* Following section — only shown when teams are followed */}
+        {followedSection.length > 0 && !search && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionDot} />
+              <Text style={styles.sectionTitle}>FOLLOWING</Text>
+              <Text style={styles.sectionCount}>{followedSection.length}</Text>
+            </View>
+            <View style={styles.grid}>
+              {followedSection.map(team => (
+                <TeamCard
+                  key={team.id}
+                  team={team}
+                  followed
+                  onPress={() => toggleFollowTeam(team.id)}
+                />
+              ))}
+            </View>
+          </View>
+        )}
 
-        {filteredTeams.length === 0 && (
+        {/* League sections */}
+        {leagueSections.map(section => (
+          <View key={section.id} style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionDot} />
+              <Text style={styles.sectionTitle}>{section.label}</Text>
+              <Text style={styles.sectionCount}>{section.teams.length}</Text>
+            </View>
+            <View style={styles.grid}>
+              {section.teams.map(team => (
+                <TeamCard
+                  key={team.id}
+                  team={team}
+                  followed={isFollowing(team.id)}
+                  onPress={() => toggleFollowTeam(team.id)}
+                />
+              ))}
+            </View>
+          </View>
+        ))}
+
+        {leagueSections.length === 0 && (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>No teams found</Text>
           </View>
@@ -292,17 +356,35 @@ export default function TeamsScreen() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
-
-      {selectedTeam && (
-        <TeamDetailSheet
-          teamId={selectedTeam.teamId}
-          teamName={selectedTeam.teamName}
-          teamLogo={selectedTeam.teamLogo}
-          league={selectedTeam.league}
-          onClose={() => setSelectedTeam(null)}
-        />
-      )}
     </SafeAreaView>
+  );
+}
+
+// ─── TeamCard component ───────────────────────────────────────────────────────
+
+function TeamCard({ team, followed, onPress }: { team: any; followed: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      style={[styles.teamCard, followed && styles.teamCardFollowed]}
+      onPress={onPress}
+      activeOpacity={0.75}
+    >
+      {followed && (
+        <View style={styles.followBadge}>
+          <Text style={styles.followBadgeText}>✓</Text>
+        </View>
+      )}
+      {team.logo
+        ? <Image source={{ uri: team.logo }} style={styles.teamLogo} resizeMode="contain" />
+        : <View style={styles.teamLogoFallback}>
+            <Text style={styles.teamLogoText}>{team.abbr}</Text>
+          </View>
+      }
+      <Text style={styles.teamName} numberOfLines={2}>{team.shortName}</Text>
+      <View style={styles.leagueBadge}>
+        <Text style={styles.leagueText}>{team.league}</Text>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -313,10 +395,17 @@ const CARD_W = (WIN_W - 32 - 16) / 3; // 3 cols, 16px padding each side, 8px gap
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
 
-  // Header
-  header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
-  headerTitle: { color: TEXT, fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
-  headerSub: { color: FAINT, fontSize: 13, marginTop: 2 },
+  // Search bar
+  searchRow: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: SURFACE, borderRadius: 10,
+    borderWidth: 1, borderColor: BORDER,
+    paddingHorizontal: 12, paddingVertical: 9,
+  },
+  searchIcon: { fontSize: 13 },
+  searchInput: { flex: 1, color: TEXT, fontSize: 14, padding: 0 },
+  searchClear: { color: FAINT, fontSize: 14, paddingHorizontal: 4 },
 
   // Filter pills
   pillBar: { borderBottomWidth: 1, borderBottomColor: BORDER, maxHeight: 50 },
@@ -342,10 +431,24 @@ const styles = StyleSheet.create({
   },
   clearStateText: { color: ACCENT, fontSize: 11, fontWeight: '700' },
 
+  // League sections
+  section: { marginTop: 16 },
+  sectionHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, paddingBottom: 8,
+  },
+  sectionDot: { width: 3, height: 16, borderRadius: 2, backgroundColor: ACCENT },
+  sectionTitle: { flex: 1, color: TEXT, fontSize: 13, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
+  sectionCount: {
+    color: FAINT, fontSize: 11, fontWeight: '600',
+    backgroundColor: SURFACE, borderRadius: 10,
+    paddingHorizontal: 7, paddingVertical: 2,
+  },
+
   // Grid
   grid: {
     flexDirection: 'row', flexWrap: 'wrap',
-    paddingHorizontal: 16, paddingTop: 12, gap: 8,
+    paddingHorizontal: 16, gap: 8,
   },
   teamCard: {
     width: CARD_W,
@@ -353,11 +456,19 @@ const styles = StyleSheet.create({
     padding: 10, borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)',
+    position: 'relative',
   },
   teamCardFollowed: {
     backgroundColor: 'rgba(217,92,23,0.12)',
     borderColor: ACCENT,
   },
+  followBadge: {
+    position: 'absolute', top: 6, right: 6,
+    width: 16, height: 16, borderRadius: 8,
+    backgroundColor: ACCENT,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  followBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900' },
   teamLogo: { width: 44, height: 44 },
   teamLogoFallback: {
     width: 44, height: 44, borderRadius: 8,

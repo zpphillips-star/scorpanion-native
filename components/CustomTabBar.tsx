@@ -99,12 +99,11 @@ export default function CustomTabBar({ state, descriptors, navigation }: TabBarP
               >
                 <View style={[styles.homeButton, active && styles.homeButtonActive]}>
                   <Image
-                    source={require('../assets/images/sp-btn.png')}
+                    source={require('../assets/images/sp-new.png')}
                     style={styles.homeImage}
                     resizeMode="cover"
                   />
                 </View>
-                <Text style={[styles.label, active && styles.labelActive]}>Home</Text>
               </TouchableOpacity>
             );
           }
@@ -134,45 +133,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#0c1b31',
     borderTopWidth: 1,
     borderTopColor: '#1e3050',
+    overflow: 'visible',  // allow home button to peek above bar
   },
   nav: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    minHeight: 60,
+    alignItems: 'center',   // vertically center tabs within bar
+    height: 52,
+    overflow: 'visible',    // allow home button to overflow upward
   },
   tab: {
     flex: 1,
     alignItems: 'center',
-    paddingTop: 6,
-    paddingBottom: 8,
+    justifyContent: 'center',
     gap: 3,
     position: 'relative',
   },
   homeTab: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: 8,
-    gap: 3,
+    justifyContent: 'center',
+    overflow: 'visible',
   },
   homeButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     overflow: 'hidden',
     borderWidth: 2.5,
     borderColor: '#D65820',
-    marginBottom: -8,  // float above nav bar
+    marginTop: -22,         // peek ~22px above the top edge of the bar
     shadowColor: '#D65820',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.6,
+    shadowRadius: 24,
+    elevation: 12,
     backgroundColor: '#0c1b31',
   },
   homeButtonActive: {
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
+    shadowOpacity: 0.9,
+    shadowRadius: 28,
   },
   homeImage: {
     width: '100%',

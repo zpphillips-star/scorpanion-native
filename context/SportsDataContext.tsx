@@ -7,6 +7,8 @@ interface SportsDataContextType {
   followedTeams: string[];
   toggleFollowTeam: (teamId: string) => void;
   isFollowing: (teamId: string) => boolean;
+  activeFilter: string;
+  setActiveFilter: (teamId: string) => void;
 }
 
 const SportsDataContext = createContext<SportsDataContextType>({
@@ -15,11 +17,14 @@ const SportsDataContext = createContext<SportsDataContextType>({
   followedTeams: [],
   toggleFollowTeam: () => {},
   isFollowing: () => false,
+  activeFilter: 'all',
+  setActiveFilter: () => {},
 });
 
 export function SportsDataProvider({ children }: { children: React.ReactNode }) {
   const [selectedSport, setSelectedSportState] = useState('all');
   const [followedTeams, setFollowedTeams] = useState<string[]>([]);
+  const [activeFilter, setActiveFilterState] = useState('all');
 
   useEffect(() => {
     AsyncStorage.getItem('followedTeams').then((val) => {
@@ -35,11 +40,17 @@ export function SportsDataProvider({ children }: { children: React.ReactNode }) 
     AsyncStorage.setItem('selectedSport', sport);
   };
 
+  const setActiveFilter = (teamId: string) => {
+    setActiveFilterState(teamId);
+  };
+
   const toggleFollowTeam = (teamId: string) => {
     setFollowedTeams((prev) => {
       const next = prev.includes(teamId)
         ? prev.filter((id) => id !== teamId)
         : [...prev, teamId];
+      // If unfollowing the active filter, reset it
+      if (!next.includes(activeFilter)) setActiveFilterState('all');
       AsyncStorage.setItem('followedTeams', JSON.stringify(next));
       return next;
     });
@@ -49,7 +60,7 @@ export function SportsDataProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <SportsDataContext.Provider
-      value={{ selectedSport, setSelectedSport, followedTeams, toggleFollowTeam, isFollowing }}
+      value={{ selectedSport, setSelectedSport, followedTeams, toggleFollowTeam, isFollowing, activeFilter, setActiveFilter }}
     >
       {children}
     </SportsDataContext.Provider>

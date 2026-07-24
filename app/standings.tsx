@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetchStandings } from '../lib/api';
+import AppHeader from '../components/AppHeader';
 import {
   BG, SURFACE, SURFACE2, SURFACE3, BORDER,
   TEXT, TEXT_MUTED, TEXT_FAINT, ACCENT, WIN, LOSS,
@@ -23,6 +24,7 @@ const LEAGUES = [
   { label: 'NHL',  sport: 'hockey',      league: 'nhl' },
   { label: 'MLS',  sport: 'soccer',      league: 'mls' },
   { label: 'WNBA', sport: 'basketball',  league: 'wnba' },
+  { label: 'NWSL', sport: 'soccer',      league: 'usa.nwsl' },
 ];
 
 // Flatten the scorpanion standings API response into a list of teams + division headers
@@ -82,6 +84,8 @@ export default function StandingsScreen() {
   const [selected, setSelected] = useState(LEAGUES[0]);
   const [rows, setRows] = useState<ReturnType<typeof flattenStandings>>([]);
   const [loading, setLoading] = useState(true);
+  const [sortKey, setSortKey] = useState<'W' | 'L' | 'PCT' | null>(null);
+  const [sortAsc, setSortAsc] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -91,11 +95,20 @@ export default function StandingsScreen() {
       .finally(() => setLoading(false));
   }, [selected]);
 
+  function toggleSort(key: 'W' | 'L' | 'PCT') {
+    if (sortKey === key) setSortAsc(a => !a);
+    else { setSortKey(key); setSortAsc(key === 'L'); }
+  }
+
+  function isSeattleTeam(name: string, abbr: string): boolean {
+    const n = (name ?? '').toLowerCase();
+    const a = (abbr ?? '').toUpperCase();
+    return n.includes('seattle') || a === 'SEA' || a === 'OL REIGN' || n.includes('reign') || n.includes('sounders') || n.includes('storm') || n.includes('kraken') || n.includes('mariners') || n.includes('seahawks');
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <View style={styles.pageHeader}>
-        <Text style={styles.pageTitle}>Standings</Text>
-      </View>
+      <AppHeader />
 
       {/* League picker */}
       <ScrollView
@@ -130,9 +143,15 @@ export default function StandingsScreen() {
           {/* Column headers */}
           <View style={styles.tableHeader}>
             <Text style={[styles.colTeam, styles.colHeader]}>Team</Text>
-            <Text style={[styles.colW, styles.colHeader]}>W</Text>
-            <Text style={[styles.colL, styles.colHeader]}>L</Text>
-            <Text style={[styles.colPct, styles.colHeader]}>PCT</Text>
+            <TouchableOpacity onPress={() => toggleSort('W')} style={styles.colW}>
+              <Text style={[styles.colHeader, sortKey === 'W' && { color: ACCENT }]}>W{sortKey === 'W' ? (sortAsc ? ' ↑' : ' ↓') : ''}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => toggleSort('L')} style={styles.colL}>
+              <Text style={[styles.colHeader, sortKey === 'L' && { color: ACCENT }]}>L{sortKey === 'L' ? (sortAsc ? ' ↑' : ' ↓') : ''}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => toggleSort('PCT')} style={styles.colPct}>
+              <Text style={[styles.colHeader, sortKey === 'PCT' && { color: ACCENT }]}>PCT{sortKey === 'PCT' ? (sortAsc ? ' ↑' : ' ↓') : ''}</Text>
+            </TouchableOpacity>
             <Text style={[styles.colGb, styles.colHeader]}>GB</Text>
           </View>
           <FlatList
@@ -159,9 +178,14 @@ export default function StandingsScreen() {
               const pctStr  = isNaN(pctNum)
                 ? pct
                 : pct.includes('.') ? pct : pctNum.toFixed(3).replace(/^0/, '');
+              const isSeattle = isSeattleTeam(name, abbr);
 
               return (
-                <View style={[styles.tableRow, index % 2 === 0 ? styles.rowEven : styles.rowOdd]}>
+                <View style={[
+                  styles.tableRow,
+                  index % 2 === 0 ? styles.rowEven : styles.rowOdd,
+                  isSeattle && { backgroundColor: 'rgba(217,92,23,0.1)' },
+                ]}>
                   <View style={[styles.colTeam, styles.teamCell]}>
                     {logo ? (
                       <Image source={{ uri: logo }} style={styles.teamLogo} resizeMode="contain" />
@@ -170,7 +194,7 @@ export default function StandingsScreen() {
                         <Text style={styles.teamLogoText}>{abbr.slice(0, 2)}</Text>
                       </View>
                     )}
-                    <Text style={styles.rowTeam} numberOfLines={1}>{name}</Text>
+                    <Text style={[styles.rowTeam, isSeattle && { color: '#F2E6CF', fontWeight: '700' }]} numberOfLines={1}>{name}</Text>
                   </View>
                   <Text style={[styles.colW, styles.rowStat]}>{wins}</Text>
                   <Text style={[styles.colL, styles.rowStat]}>{losses}</Text>
@@ -211,7 +235,7 @@ const styles = StyleSheet.create({
   divisionHeader: {
     paddingHorizontal: 16,
     paddingVertical: 7,
-    backgroundColor: SURFACE2,
+    backgroundColor: '#213858',
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
   },

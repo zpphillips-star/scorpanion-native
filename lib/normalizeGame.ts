@@ -8,6 +8,9 @@ export type NormalizedGame = {
   status: string;
   period?: string;
   gameTime?: string;
+  kickoff?: string;
+  seattleTeamId?: string;   // e.g. 'seahawks', 'mariners' — raw API id
+  seattleEspnId?: string;   // seattleTeam.espnId — matches allProTeams.espnId reliably
   awayTeam: { id: string; name: string; abbreviation: string; logo?: string };
   homeTeam: { id: string; name: string; abbreviation: string; logo?: string };
   awayScore?: number | string;
@@ -81,6 +84,32 @@ export function isLiveStatus(status: string): boolean {
   );
 }
 
+/** Multi-day tour events (PGA, LPGA, etc.) should only show LIVE on the day of the actual round. */
+export function isTourSport(sport: string): boolean {
+  const s = (sport || '').toLowerCase();
+  return s.includes('golf') || s.includes('pga') || s.includes('lpga');
+}
+
+function todayDateStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+/**
+ * Returns true if this game should be shown as LIVE.
+ * For tour sports (PGA/LPGA), only live if the round is scheduled TODAY.
+ * For all other sports, just checks the status string.
+ */
+export function isEffectivelyLive(status: string, sport: string, kickoff?: string): boolean {
+  if (!isLiveStatus(status)) return false;
+  if (isTourSport(sport)) {
+    if (!kickoff) return false;
+    const roundDate = kickoff.split('T')[0];
+    return roundDate === todayDateStr();
+  }
+  return true;
+}
+
 // Parse a kickoff to a local time string like "7:10 PM"
 function parseGameTime(kickoff: string): string | undefined {
   if (!kickoff) return undefined;
@@ -128,12 +157,15 @@ export function normalizeGame(raw: any): NormalizedGame {
     const sportLabel = getSportLabel(raw.league || raw.sport || '');
 
     return {
-      gameId:    raw.id || String(Math.random()),
-      sport:     raw.sport || '',
+      gameId:        String(raw.id || Math.random()),
+      sport:         raw.sport || '',
       sportLabel,
       status,
       period,
-      gameTime:  parseGameTime(raw.kickoff),
+      gameTime:      parseGameTime(raw.kickoff),
+      kickoff:       raw.kickoff || undefined,
+      seattleTeamId: raw.seattleTeam?.id || undefined,
+      seattleEspnId: raw.seattleTeam?.espnId || undefined,
       awayTeam: {
         id:           awayTeamData.espnId || awayTeamData.id || '',
         name:         awayTeamData.shortName || awayTeamData.name || 'Away',
@@ -174,12 +206,13 @@ export function normalizeGame(raw: any): NormalizedGame {
   const sport: string = (raw.sport ?? raw.league ?? '').toLowerCase();
 
   return {
-    gameId:    raw.id ?? raw.gameId ?? String(Math.random()),
+    gameId:    String(raw.id ?? raw.gameId ?? Math.random()),
     sport,
     sportLabel: getSportLabel(sport),
     status,
     period:    period || undefined,
     gameTime:  parseGameTime(raw.date ?? comp.date),
+    kickoff:   raw.date ?? comp.date ?? raw.kickoff ?? undefined,
     awayTeam: {
       id:           away.team?.id ?? '',
       name:         away.team?.shortDisplayName ?? away.team?.name ?? 'Away',

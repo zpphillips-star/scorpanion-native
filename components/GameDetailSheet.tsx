@@ -14,6 +14,8 @@ import {
 import { getSeattleTeamLogo } from '../lib/normalizeGame';
 import type { ScorpanionGame, WebTeamDetail, TeamSheetParams } from '../lib/types';
 import TeamDetailSheet from './TeamDetailSheet';
+import BoxScore from './BoxScore';
+import UpcomingScheduleSection from './UpcomingScheduleSection';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -29,7 +31,7 @@ const LOSS_RED     = '#f87171';
 const TIE_GRAY     = '#52525b';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SHEET_HEIGHT = SCREEN_HEIGHT * 0.9;
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.94;
 const SWIPE_CLOSE_DY = 120;
 const SWIPE_CLOSE_VY = 0.5;
 
@@ -307,9 +309,16 @@ export default function GameDetailSheet({ game, onClose }: Props) {
                   <Text style={[styles.teamName, hasScore && homeWon && styles.loserText]} numberOfLines={1}>{awayName}</Text>
                   <Text style={styles.teamAbbr}>{awayAbbr}</Text>
                   {(awayRecord || awayDetail) && (
-                    <Text style={styles.teamRecord}>
-                      {awayRecord ? formatRecord(awayRecord) : awayDetail ? `${awayDetail.wins}–${awayDetail.losses}` : ''}
-                    </Text>
+                    <>
+                      <Text style={styles.teamRecord}>
+                        {awayRecord ? formatRecord(awayRecord) : awayDetail ? `${awayDetail.wins}–${awayDetail.losses}` : ''}
+                      </Text>
+                      {awayRecord && (
+                        <Text style={styles.winPct}>
+                          {(() => { const r = awayRecord; const t = r.wins + r.losses + (r.ties ?? 0); return t ? '.' + Math.round((r.wins/t)*1000).toString().padStart(3,'0') : '.000'; })()}
+                        </Text>
+                      )}
+                    </>
                   )}
                 </TouchableOpacity>
 
@@ -358,9 +367,16 @@ export default function GameDetailSheet({ game, onClose }: Props) {
                   <Text style={[styles.teamName, hasScore && awayWon && styles.loserText]} numberOfLines={1}>{homeName}</Text>
                   <Text style={styles.teamAbbr}>{homeAbbr}</Text>
                   {(homeRecord || homeDetail) && (
-                    <Text style={styles.teamRecord}>
-                      {homeRecord ? formatRecord(homeRecord) : homeDetail ? `${homeDetail.wins}–${homeDetail.losses}` : ''}
-                    </Text>
+                    <>
+                      <Text style={styles.teamRecord}>
+                        {homeRecord ? formatRecord(homeRecord) : homeDetail ? `${homeDetail.wins}–${homeDetail.losses}` : ''}
+                      </Text>
+                      {homeRecord && (
+                        <Text style={styles.winPct}>
+                          {(() => { const r = homeRecord; const t = r.wins + r.losses + (r.ties ?? 0); return t ? '.' + Math.round((r.wins/t)*1000).toString().padStart(3,'0') : '.000'; })()}
+                        </Text>
+                      )}
+                    </>
                   )}
                 </TouchableOpacity>
 
@@ -381,6 +397,16 @@ export default function GameDetailSheet({ game, onClose }: Props) {
               {/* Divider */}
               <View style={styles.hairline} />
 
+              {/* ── BOX SCORE (goals, period breakdown, top performers) ── */}
+              {(isLive || isFt) && game.id && (
+                <BoxScore
+                  eventId={game.id.includes('|') ? game.id.split('|').at(-1)! : game.id}
+                  league={game.league}
+                  seattleTeamId={game.seattleTeam.espnId || game.seattleTeam.id}
+                  color={isLive ? '#ef4444' : (game.seattleTeam.primaryColor ?? '#D95C17')}
+                />
+              )}
+
               {/* ── TEAM CONTEXT (form + standings) ── */}
               {(seaDetail || oppDetail) && (
                 <View style={styles.contextRow}>
@@ -393,6 +419,14 @@ export default function GameDetailSheet({ game, onClose }: Props) {
                   </View>
                 </View>
               )}
+
+              {/* ── UPCOMING SCHEDULE ── */}
+              <UpcomingScheduleSection
+                awayName={awayName}
+                homeName={homeName}
+                awayGames={(awayDetail?.upcomingGames ?? []).slice(0, 3)}
+                homeGames={(homeDetail?.upcomingGames ?? []).slice(0, 3)}
+              />
 
               <View style={{ height: 40 }} />
             </ScrollView>
@@ -423,6 +457,10 @@ const styles = StyleSheet.create({
     backgroundColor: BG,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.7,
+    shadowRadius: 40,
   },
   dragArea: { alignItems: 'center', paddingTop: 12, paddingBottom: 6 },
   dragHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' },
@@ -441,26 +479,27 @@ const styles = StyleSheet.create({
   teamLogo: { width: 52, height: 52 },
   teamLogoFallback: { width: 52, height: 52, borderRadius: 8, backgroundColor: SURFACE2, alignItems: 'center', justifyContent: 'center' },
   teamLogoText: { color: TEXT_FAINT, fontSize: 11, fontWeight: '700' },
-  logoDim: { opacity: 0.35 },
+  logoDim: { opacity: 0.4 },
   teamName: { color: TEXT, fontSize: 14, fontWeight: '700', textAlign: 'center' },
   loserText: { color: LOSER },
   teamAbbr: { color: TEXT_FAINT, fontSize: 10, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: -4 },
   teamRecord: { color: TEXT_FAINT, fontSize: 11 },
+  winPct: { color: TEXT_FAINT, fontSize: 10 },
 
   // Score center
   centerBlock: { alignItems: 'center', justifyContent: 'flex-start', paddingTop: 12, minWidth: 90, gap: 4 },
   scoreRow: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
-  scoreNum: { color: TEXT, fontSize: 62, fontWeight: '900', letterSpacing: -1, lineHeight: 68 },
+  scoreNum: { color: TEXT, fontSize: 62, fontWeight: '900', letterSpacing: -1, lineHeight: 68, fontFamily: 'BarlowCondensed_900Black' },
   scoreLoser: { color: LOSER },
   scoreDash: { color: BORDER, fontSize: 28, fontWeight: '900', marginHorizontal: 2 },
-  vsText: { color: BORDER, fontSize: 28, fontWeight: '900' },
-  kickoffTime: { color: TEXT, fontSize: 15, fontWeight: '700' },
+  vsText: { color: '#3f3f46', fontSize: 28, fontWeight: '900' },
+  kickoffTime: { color: TEXT, fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
   kickoffDate: { color: TEXT_FAINT, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8 },
 
   // Status
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef4444' },
-  liveLabel: { color: '#f87171', fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
+  liveLabel: { color: '#f87171', fontSize: 11, fontWeight: '800', letterSpacing: 1.68, textTransform: 'uppercase' },
   livePeriod: { color: TEXT_FAINT, fontSize: 11 },
   finalLabel: { color: TEXT_FAINT, fontSize: 10, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
 

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Image, TouchableOpacity, Animated, StyleSheet } from 'react-native';
-import { SURFACE, BORDER, TEXT_FAINT } from '../constants/theme';
+import { View, Text, Image, Pressable, Animated, StyleSheet } from 'react-native';
+import { SURFACE, BORDER, TEXT_FAINT, ACCENT } from '../constants/theme';
+import { isEffectivelyLive } from '../lib/normalizeGame';
+import { FONT_BLACK } from '../constants/fonts';
 
 interface Team {
   id?: string;
@@ -21,18 +23,25 @@ interface GameCardProps {
   gameId: string;
   onPress?: () => void;
   gameTime?: string;
+  kickoff?: string;
   formDots?: Array<'W' | 'L' | 'T'>;
-  compact?: boolean; // schedule/upcoming list style
+  compact?: boolean;       // schedule/upcoming list style
+  noDivider?: boolean;     // suppress bottom border in compact mode
+  broadcasts?: string;     // broadcast network label
+  featured?: boolean;      // larger logo display
+  venue?: string;          // venue name
+  isProGame?: boolean;     // for ticket badge
 }
 
 export default function GameCard({
   awayTeam, homeTeam, awayScore, homeScore,
   status, period, sport: _sport, sportLabel,
-  gameId: _gameId, onPress, gameTime, compact = false,
+  gameId: _gameId, onPress, gameTime, kickoff,
+  compact = false, noDivider = false,
+  broadcasts, featured, venue, isProGame,
 }: GameCardProps) {
   const lower = (status ?? '').toLowerCase();
-  const isLive  = lower === 'live' || lower.includes('progress') || lower.includes('inning') ||
-                  lower.includes('quarter') || lower.includes('period') || lower.includes('half');
+  const isLive  = isEffectivelyLive(status, _sport ?? '', kickoff);
   const isFinal = lower === 'final' || lower.includes('final');
   const isUp    = !isLive && !isFinal;
 
@@ -56,7 +65,15 @@ export default function GameCard({
   // COMPACT MODE — 4-column row (schedule/upcoming)
   if (compact) {
     return (
-      <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={styles.compactRow}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.compactRow,
+          noDivider && styles.compactRowNoDivider,
+          isLive && styles.compactRowLive,
+          pressed && { backgroundColor: 'rgba(255,255,255,0.02)' },
+        ]}
+      >
         {/* Status col */}
         <View style={styles.compactStatus}>
           {isLive ? (
@@ -92,33 +109,49 @@ export default function GameCard({
             {homeTeam.name}
           </Text>
         </View>
-      </TouchableOpacity>
+        {/* Chevron */}
+        <Text style={styles.compactChevron}>›</Text>
+      </Pressable>
     );
   }
 
   // FULL MODE — big card matching web app (Away | Score | Home)
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.75}
-      style={[styles.card, isLive && styles.cardLive, isFinal && styles.cardFinal]}
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.card,
+        isLive && styles.cardLive,
+        isFinal && styles.cardFinal,
+        pressed && { opacity: 0.9 },
+      ]}
     >
-      {/* Status */}
-      <View style={styles.statusRow}>
-        {isLive ? (
-          <>
-            <Animated.View style={[styles.liveDot, { opacity: pulse }]} />
-            <Text style={styles.liveLabel}>LIVE</Text>
-            {period ? <Text style={styles.periodText}>{period}</Text> : null}
-          </>
-        ) : isFinal ? (
-          <Text style={styles.finalLabel}>FINAL</Text>
-        ) : (
-          <Text style={styles.timeLabel}>{gameTime ?? 'TBD'}</Text>
-        )}
+      {/* Ticket badge for upcoming pro games */}
+      {isProGame && isUp && (
+        <View style={styles.ticketBadge}>
+          <Text style={styles.ticketEmoji}>🎟️</Text>
+        </View>
+      )}
+
+      {/* Card header row: [sport label] [status/time] [broadcast] */}
+      <View style={styles.cardHeader}>
+        <Text style={styles.cardHeaderSport}>{sportLabel ?? ''}</Text>
+        <View style={styles.cardHeaderStatus}>
+          {isLive && <Animated.View style={[styles.liveDot, { opacity: pulse }]} />}
+          <Text style={isLive ? styles.liveLabel : isFinal ? styles.finalLabel : styles.timeLabel}>
+            {isLive
+              ? (period ? `LIVE · ${period}` : 'LIVE')
+              : isFinal
+              ? 'FINAL'
+              : (gameTime ?? 'TBD')}
+          </Text>
+        </View>
+        <Text style={styles.cardHeaderBroadcast}>{broadcasts ?? ''}</Text>
       </View>
 
       {/* Away | Score | Home */}
       <View style={styles.matchup}>
-        <TeamCol team={awayTeam} won={awayWon} lost={isFinal && homeWon} />
+        <TeamCol team={awayTeam} won={awayWon} lost={isFinal && homeWon} isAway featured={featured} />
 
         <View style={styles.scoreBlock}>
           {hasScore ? (
@@ -128,19 +161,19 @@ export default function GameCard({
                 <Text style={styles.scoreDash}>–</Text>
                 <Text style={[styles.score, isFinal && awayWon && styles.scoreLoser]}>{homeScore}</Text>
               </View>
-              {isFinal && <Text style={styles.ftText}>FULL TIME</Text>}
+              {isFinal && <Text style={styles.ftText}>FINAL</Text>}
             </>
           ) : (
             <Text style={styles.vs}>vs</Text>
           )}
         </View>
 
-        <TeamCol team={homeTeam} won={homeWon} lost={isFinal && awayWon} />
+        <TeamCol team={homeTeam} won={homeWon} lost={isFinal && awayWon} featured={featured} />
       </View>
 
-      {/* Sport label */}
-      {sportLabel ? <Text style={styles.sportLabel}>{sportLabel}</Text> : null}
-    </TouchableOpacity>
+      {/* Venue */}
+      {venue ? <Text style={styles.venueText}>{venue}</Text> : null}
+    </Pressable>
   );
 }
 
@@ -150,12 +183,27 @@ function homeLogo(team: { logo?: string; abbreviation: string }) {
     : <View style={styles.compactLogoFallback}><Text style={styles.compactLogoText}>{team.abbreviation?.slice(0,3)}</Text></View>;
 }
 
-function TeamCol({ team, won, lost }: { team: { logo?: string; name: string; abbreviation: string }; won: boolean; lost: boolean }) {
+function TeamCol({
+  team, won, lost, isAway, featured,
+}: {
+  team: { logo?: string; name: string; abbreviation: string };
+  won: boolean;
+  lost: boolean;
+  isAway?: boolean;
+  featured?: boolean;
+}) {
+  const logoSize = featured ? 60 : 52;
+  const logoRadius = featured ? 12 : 0;
   return (
     <View style={styles.teamCol}>
+      {won && <Text style={styles.winIndicator}>{isAway ? '▲' : '▲'}</Text>}
       {team.logo
-        ? <Image source={{ uri: team.logo }} style={[styles.logo, lost && styles.logoDim]} resizeMode="contain" />
-        : <View style={[styles.logoFallback, lost && styles.logoDim]}>
+        ? <Image
+            source={{ uri: team.logo }}
+            style={[styles.logo, { width: logoSize, height: logoSize, borderRadius: logoRadius }, lost && styles.logoDim]}
+            resizeMode="contain"
+          />
+        : <View style={[styles.logoFallback, { width: logoSize, height: logoSize }, lost && styles.logoDim]}>
             <Text style={styles.logoFallbackText}>{team.abbreviation?.slice(0,3)}</Text>
           </View>
       }
@@ -178,14 +226,32 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingVertical: 14,
     paddingHorizontal: 4,
+    overflow: 'visible',
   },
   cardLive:  { borderLeftWidth: 3, borderLeftColor: '#ef4444' },
   cardFinal: { opacity: 0.88 },
 
-  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 10 },
+  // Card header (3-col: sport | status | broadcast)
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  cardHeaderSport: {
+    color: '#2d4a6b', fontSize: 9, fontWeight: '700',
+    letterSpacing: 1.4, textTransform: 'uppercase', flex: 1,
+  },
+  cardHeaderStatus: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1, justifyContent: 'center',
+  },
+  cardHeaderBroadcast: {
+    color: '#2d4a6b', fontSize: 10, flex: 1, textAlign: 'right',
+  },
+
   liveDot:   { width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef4444' },
   liveLabel: { color: '#f87171', fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
-  periodText:{ color: TEXT_FAINT, fontSize: 11, fontWeight: '600' },
   finalLabel:{ color: TEXT_FAINT, fontSize: 10, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
   timeLabel: { color: '#f0f0f8', fontSize: 12, fontWeight: '600' },
 
@@ -198,30 +264,49 @@ const styles = StyleSheet.create({
   logoFallbackText: { color: TEXT_FAINT, fontSize: 11, fontWeight: '700' },
   teamName: { color: '#F2E6CF', fontSize: 13, fontWeight: '700', textAlign: 'center' },
   teamAbbr: { color: LOSER_COLOR, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', marginTop: -4 },
+  winIndicator: { color: ACCENT, fontSize: 10, fontWeight: '900' },
 
   scoreBlock: { width: 96, alignItems: 'center', gap: 2 },
   scoreRow:   { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
-  score:      { color: '#F2E6CF', fontSize: 62, fontWeight: '900', letterSpacing: -1, lineHeight: 66 },
+  score:      { color: '#F2E6CF', fontSize: 62, fontWeight: '900', fontFamily: FONT_BLACK, letterSpacing: -1, lineHeight: 66 },
   scoreLoser: { color: LOSER_COLOR },
   scoreDash:  { color: '#1e3050', fontSize: 28, fontWeight: '900', marginHorizontal: 2 },
-  ftText:     { color: TEXT_FAINT, fontSize: 9, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' },
-  vs:         { color: '#1e3050', fontSize: 22, fontWeight: '900' },
+  ftText:     { color: TEXT_FAINT, fontSize: 9, fontWeight: '700', letterSpacing: 3, textTransform: 'uppercase' },
+  vs:         { color: '#1e3050', fontSize: 20, fontWeight: '900' },
   loserText:  { color: LOSER_COLOR },
 
+  venueText:  { fontSize: 10, color: '#5F6773', textAlign: 'center', marginTop: 4, marginHorizontal: 8 },
   sportLabel: { color: '#2d4a6b', fontSize: 9, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', textAlign: 'center', marginTop: 10 },
 
+  // Ticket badge
+  ticketBadge: {
+    position: 'absolute', top: -36, alignSelf: 'center',
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: '#D95C17',
+    alignItems: 'center', justifyContent: 'center', zIndex: 10,
+  },
+  ticketEmoji: { fontSize: 28 },
+
   // ── Compact row ────────────────────────────────────────────────────────────
-  compactRow:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)', backgroundColor: 'transparent' },
-  compactStatus:    { width: 72, flexShrink: 0, gap: 2 },
+  compactRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'transparent',
+  },
+  compactRowNoDivider: { borderBottomWidth: 0 },
+  compactRowLive: { borderLeftWidth: 2, borderLeftColor: '#ef4444', paddingLeft: 13 },
+  compactStatus:    { width: 64, flexShrink: 0, gap: 2 },
   compactStatusText:{ color: TEXT_FAINT, fontSize: 11, fontWeight: '600' },
   compactSport:     { color: '#2d4a6b', fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   compactAway:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6 },
-  compactHome:      { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  compactLogo:      { width: 20, height: 20 },
-  compactLogoFallback: { width: 20, height: 20, borderRadius: 3, backgroundColor: '#1a2d4a', alignItems: 'center', justifyContent: 'center' },
+  compactHome:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 6 },
+  compactLogo:      { width: 26, height: 26 },
+  compactLogoFallback: { width: 26, height: 26, borderRadius: 4, backgroundColor: '#1a2d4a', alignItems: 'center', justifyContent: 'center' },
   compactLogoText:  { color: TEXT_FAINT, fontSize: 7, fontWeight: '700' },
-  compactTeamName:  { color: '#F2E6CF', fontSize: 13, fontWeight: '600', flex: 1 },
+  compactTeamName:  { color: '#F2E6CF', fontSize: 13, fontWeight: '600', flexShrink: 1 },
   compactScoreBlock:{ width: 56, alignItems: 'center' },
-  compactScore:     { color: '#F2E6CF', fontSize: 13, fontWeight: '700' },
+  compactScore:     { color: '#F2E6CF', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
   compactVs:        { color: TEXT_FAINT, fontSize: 12, fontWeight: '600' },
+  compactChevron:   { color: TEXT_FAINT, fontSize: 20, paddingLeft: 4 },
 });

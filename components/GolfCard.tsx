@@ -181,11 +181,12 @@ interface GolfUpcomingRowProps {
   label: string
   accentColor: string
   onPress: () => void
+  noDivider?: boolean
 }
 
-export function GolfUpcomingRow({ tournament, label, accentColor, onPress }: GolfUpcomingRowProps) {
+export function GolfUpcomingRow({ tournament, label, accentColor, onPress, noDivider }: GolfUpcomingRowProps) {
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={styles.upcomingRow}>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={[styles.upcomingRow, noDivider && { borderBottomWidth: 0 }]}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={styles.upcomingLabelRow}>
           <Text style={[styles.upcomingTourLabel, { color: accentColor }]}>{label}</Text>

@@ -4,6 +4,8 @@ import {
   ActivityIndicator, TouchableOpacity, Image, StyleSheet, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import AppHeader from '../components/AppHeader';
 import GameCard from '../components/GameCard';
 import GameDetailSheet from '../components/GameDetailSheet';
 import { GolfTodayCard, GolfMiniCard, GolfUpcomingRow } from '../components/GolfCard';
@@ -131,12 +133,20 @@ function OffseasonCard({ teamId, logo, shortName, league, nextGame }: OffseasonC
 
 // ── Mini card for RECENT horizontal scroll ────────────────────────────────────
 
+function getDayLabel(kickoff?: string): string {
+  if (!kickoff) return '';
+  const d = new Date(kickoff);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { weekday: 'short' }); // "Mon", "Tue", etc.
+}
+
 function MiniCard({ game, onPress }: { game: NormalizedGame; onPress: () => void }) {
   const awayWon = game.status === 'Final' && Number(game.awayScore) > Number(game.homeScore);
   const homeWon = game.status === 'Final' && Number(game.homeScore) > Number(game.awayScore);
+  const dayLabel = getDayLabel(game.kickoff);
   return (
     <TouchableOpacity onPress={onPress} style={styles.miniCard} activeOpacity={0.7}>
-      <Text style={styles.miniSport}>{game.sportLabel}</Text>
+      <Text style={styles.miniSport}>{dayLabel}</Text>
       <View style={styles.miniTeams}>
         <View style={styles.miniTeamCol}>
           {game.awayTeam.logo
@@ -212,17 +222,21 @@ function useGolfTournaments(tourId: 'pga' | 'lpga', enabled: boolean) {
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function HomeScreen() {
-  const { followedTeams } = useSportsData();
+  const { followedTeams, activeFilter, setActiveFilter } = useSportsData();
   const [allGames,   setAllGames]   = useState<any[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedGame, setSelectedGame] = useState<ScorpanionGame | null>(null);
-  const [activeFilter, setActiveFilter] = useState<string>('all');
   const [collegePicker, setCollegePicker] = useState<string | null>(null); // 'uw' | 'wsu' | 'seattleu'
   const [selectedGolfUpcoming, setSelectedGolfUpcoming] = useState<{
     tournament: PGATournament; label: string; accentColor: string;
   } | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Clear college picker when global filter changes to a non-college item
+  useEffect(() => {
+    if (getCollegeGroupKey(activeFilter) === null) setCollegePicker(null);
+  }, [activeFilter]);
 
   // ── Golf follow state ────────────────────────────────────────────────────────
   const pgaFollowed  = followedTeams.includes('pga');
@@ -453,9 +467,7 @@ export default function HomeScreen() {
   if (followedTeams.length === 0) {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Scorpanion</Text>
-        </View>
+        <AppHeader />
         <View style={styles.noTeamsState}>
           <View style={styles.noTeamsCircle}>
             <Text style={styles.noTeamsPlus}>+</Text>
@@ -469,100 +481,13 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <AppHeader showLive={hasLive} />
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={ACCENT} colors={[ACCENT]} />
         }
       >
-        {/* Page header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Scorpanion</Text>
-          {hasLive && (
-            <View style={styles.livePill}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>Live Now</Text>
-            </View>
-          )}
-        </View>
-
-        {/* ── Team filter bar ───────────────────────────────────────────────── */}
-        {hasFilterBar && (
-          <View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterBarContent}
-              style={styles.filterBarScroll}
-            >
-              {/* ALL pill */}
-              <TouchableOpacity onPress={() => { setActiveFilter('all'); setCollegePicker(null); }} activeOpacity={0.75}>
-                <View style={[styles.filterCircle, activeFilter === 'all' && styles.filterCircleActive]}>
-                  <Text style={styles.filterAllText}>All</Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Pro team logo pills */}
-              {filterableProTeams.map(team => {
-                const isActive = activeFilter === team.id;
-                const isDimmed = activeFilter !== 'all' && !isActive;
-                return (
-                  <TouchableOpacity
-                    key={team.id}
-                    onPress={() => { setActiveFilter(isActive ? 'all' : team.id); setCollegePicker(null); }}
-                    activeOpacity={0.75}
-                  >
-                    <View style={[styles.filterCircle, styles.filterCircleTeam, isActive && styles.filterCircleActive, isDimmed && styles.filterCircleDim]}>
-                      <Image source={{ uri: team.logo }} style={styles.filterLogo} resizeMode="contain" />
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-
-              {/* Golf tour pills */}
-              {golfFilterItems.map(item => {
-                const isActive = activeFilter === item.id;
-                const isDimmed = activeFilter !== 'all' && !isActive;
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    onPress={() => { setActiveFilter(isActive ? 'all' : item.id); setCollegePicker(null); }}
-                    activeOpacity={0.75}
-                  >
-                    <View style={[styles.filterCircle, styles.filterCircleTeam, isActive && styles.filterCircleActive, isDimmed && styles.filterCircleDim]}>
-                      <Image source={{ uri: item.logo }} style={styles.filterLogo} resizeMode="contain" />
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-
-              {/* College group pills (with ▾ chevron) */}
-              {collegeGroupReps.map(({ groupKey, team }) => {
-                const isActive = getCollegeGroupKey(activeFilter) === groupKey;
-                const isDimmed = activeFilter !== 'all' && !isActive;
-                const pickerOpen = collegePicker === groupKey;
-                return (
-                  <TouchableOpacity
-                    key={groupKey}
-                    onPress={() => {
-                      if (pickerOpen) {
-                        setCollegePicker(null);
-                      } else {
-                        setCollegePicker(groupKey);
-                      }
-                    }}
-                    activeOpacity={0.75}
-                  >
-                    <View style={[styles.filterCircle, styles.filterCircleTeam, isActive && styles.filterCircleActive, isDimmed && styles.filterCircleDim]}>
-                      <Image source={{ uri: team.logo }} style={styles.filterLogo} resizeMode="contain" />
-                      <Text style={styles.chevron}>▾</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
 
         {/* ── RECENT section ─────────────────────────────────────────────────── */}
         {(recent.length > 0 || pgaRecent.length > 0 || lpgaRecent.length > 0) && (
@@ -586,6 +511,13 @@ export default function HomeScreen() {
         {(todayGames.length > 0 || hasGolfToday) && (
           <View style={styles.section}>
             {sectionHeader('TODAY', new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase())}
+            <TouchableOpacity
+              style={styles.scheduleLink}
+              onPress={() => router.push('/schedule' as any)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.scheduleLinkText}>Full schedule →</Text>
+            </TouchableOpacity>
             {todayGames.map((g) => (
               <GameCard key={g.gameId} {...g} onPress={() => { const raw = rawById.get(g.gameId); if (raw) setSelectedGame(raw); }} />
             ))}
@@ -610,7 +542,7 @@ export default function HomeScreen() {
                 <View key={ds}>
                   <DateHeader dateStr={ds} />
                   {games.map((g) => (
-                    <GameCard key={g.gameId} {...g} compact onPress={() => { const raw = rawById.get(g.gameId); if (raw) setSelectedGame(raw); }} />
+                    <GameCard key={g.gameId} {...g} compact noDivider onPress={() => { const raw = rawById.get(g.gameId); if (raw) setSelectedGame(raw); }} />
                   ))}
                   {golfItems.map(({ tournament: t, label, accentColor }, idx) => {
                     if (shownGolfIds.has(t.id)) return null;
@@ -621,6 +553,7 @@ export default function HomeScreen() {
                         tournament={t}
                         label={label}
                         accentColor={accentColor}
+                        noDivider
                         onPress={() => setSelectedGolfUpcoming({ tournament: t, label, accentColor })}
                       />
                     );
@@ -735,9 +668,11 @@ const styles = StyleSheet.create({
   section: { marginTop: 24 },
 
   sectionRow:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 12, gap: 10 },
-  sectionLabel:{ color: '#F2E6CF', fontSize: 12, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase' },
+  sectionLabel:{ color: '#F2E6CF', fontSize: 12, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', borderBottomWidth: 2, borderBottomColor: ACCENT, paddingBottom: 2 },
   sectionRule: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' },
   sectionSub:  { color: TEXT_FAINT, fontSize: 11, fontWeight: '600', letterSpacing: 0.5 },
+  scheduleLink: { paddingHorizontal: 16, paddingBottom: 8, alignItems: 'flex-end' },
+  scheduleLinkText: { color: ACCENT, fontSize: 12, fontWeight: '600' },
 
   miniScroll: { paddingHorizontal: 16, gap: 0 },
   miniCard:   { width: 120, paddingRight: 16, marginRight: 16, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.08)' },
