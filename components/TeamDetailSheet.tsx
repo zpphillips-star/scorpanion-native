@@ -117,10 +117,12 @@ export default function TeamDetailSheet({ teamId, teamName, teamLogo, league, on
     if (!teamId || league === 'whl' || league === 'pwhl') { setLoading(false); return; }
     setData(null);
     setLoading(true);
+    let mounted = true;
     fetch(`https://scorpanion.com/api/team-detail?teamId=${encodeURIComponent(teamId)}&league=${encodeURIComponent(league)}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(d => { if (mounted) { setData(d); setLoading(false); } })
+      .catch(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
   }, [teamId, league]);
 
   const logo = data?.logo ?? teamLogo ?? '';

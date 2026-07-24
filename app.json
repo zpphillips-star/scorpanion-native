@@ -32,12 +32,6 @@
     "plugins": [
       "expo-router"
     ],
-    "fonts": [
-      "./assets/fonts/BarlowCondensed-SemiBold.ttf",
-      "./assets/fonts/BarlowCondensed-Bold.ttf",
-      "./assets/fonts/BarlowCondensed-ExtraBold.ttf",
-      "./assets/fonts/BarlowCondensed-Black.ttf"
-    ],
     "experiments": {
       "typedRoutes": true
     },

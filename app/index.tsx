@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, FlatList, ScrollView, RefreshControl,
   ActivityIndicator, TouchableOpacity, Image, StyleSheet, Modal,
+  AppState, AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -231,7 +232,9 @@ export default function HomeScreen() {
   const [selectedGolfUpcoming, setSelectedGolfUpcoming] = useState<{
     tournament: PGATournament; label: string; accentColor: string;
   } | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const intervalRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isFirstLoadRef = useRef(true); // tracks whether initial data has ever loaded
+  const appStateRef    = useRef<AppStateStatus>(AppState.currentState);
 
   // Clear college picker when global filter changes to a non-college item
   useEffect(() => {
@@ -250,26 +253,53 @@ export default function HomeScreen() {
   // ── Schedule load ────────────────────────────────────────────────────────────
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    else if (!allGames.length) setLoading(true);
+    // Only show full-screen loading spinner on initial load (not on background polls).
+    else if (isFirstLoadRef.current) setLoading(true);
     try {
       const raw  = await fetchSchedule();
       const list = Array.isArray(raw) ? raw : raw.games ?? raw.events ?? [];
       setAllGames(list);
+      isFirstLoadRef.current = false;
     } catch {}
     setLoading(false);
     setRefreshing(false);
   }, []);
 
+  // Start polling; pause when app is backgrounded to save battery.
   useEffect(() => {
     load();
     intervalRef.current = setInterval(() => load(), 30_000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+
+    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      const prev = appStateRef.current;
+      appStateRef.current = nextState;
+
+      if (nextState === 'active' && prev.match(/inactive|background/)) {
+        // Resumed from background — refresh immediately and restart interval.
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        intervalRef.current = setInterval(() => load(), 30_000);
+        load();
+      } else if (nextState.match(/inactive|background/) && prev === 'active') {
+        // Going to background — pause polling to save battery.
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      }
+    });
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      sub.remove();
+    };
   }, [load]);
 
-  const today = todayStr();
-  const now   = Date.now();
-  const day7  = 7 * 86_400_000;
-  const day14 = 14 * 86_400_000;
+  // Stable timestamps — recompute only when allGames data changes to avoid
+  // invalidating useMemo dependencies on every render.
+  const today  = useMemo(() => todayStr(), []);
+  const nowMs  = useMemo(() => Date.now(), [allGames]);
+  const day7   = 7 * 86_400_000;
+  const day14  = 14 * 86_400_000;
 
   // ── Build filter bar items ───────────────────────────────────────────────────
   // 1) Pro teams with a Seattle mapping
@@ -341,9 +371,9 @@ export default function HomeScreen() {
         todayGames.unshift(norm);
       } else if (ds === today) {
         todayGames.push(norm);
-      } else if (ts && ts >= now - day7 && ts < now && g.status === 'ft') {
+      } else if (ts && ts >= nowMs - day7 && ts < nowMs && g.status === 'ft') {
         recent.push(norm);
-      } else if (ts && ts > now && ts <= now + day14) {
+      } else if (ts && ts > nowMs && ts <= nowMs + day14) {
         upcoming.push(norm);
       }
     }
@@ -352,10 +382,10 @@ export default function HomeScreen() {
     upcoming.sort((a, b) => (parseKickoffMs((filteredGames.find((g: any) => g.id === a.gameId) ?? {}).kickoff ?? '') ?? 0) - (parseKickoffMs((filteredGames.find((g: any) => g.id === b.gameId) ?? {}).kickoff ?? '') ?? 0));
 
     return { recent, todayGames, upcoming, rawById };
-  }, [filteredGames, today, now]);
+  }, [filteredGames, today, nowMs]);
 
   // ── Golf classification ───────────────────────────────────────────────────────
-  const cutoffAgo7 = now - day7;
+  const cutoffAgo7 = nowMs - day7;
   const pgaToday    = pgaVisibleInFilter  ? pgaTournaments.filter(t => t.status === 'live') : [];
   const pgaRecent   = pgaVisibleInFilter  ? pgaTournaments.filter(t => t.status === 'completed' && new Date(t.endDate).getTime() >= cutoffAgo7) : [];
   const pgaUpcoming = pgaVisibleInFilter  ? pgaTournaments.filter(t => t.status === 'upcoming') : [];
@@ -413,12 +443,12 @@ export default function HomeScreen() {
       if (!seattleId) continue;
       const next = allGames
         .filter((g: any) => g.seattleTeam?.id === seattleId)
-        .filter((g: any) => (parseKickoffMs(g.kickoff) ?? 0) > now)
+        .filter((g: any) => (parseKickoffMs(g.kickoff) ?? 0) > nowMs)
         .sort((a: any, b: any) => (parseKickoffMs(a.kickoff) ?? 0) - (parseKickoffMs(b.kickoff) ?? 0))[0];
       if (next) map[id] = next;
     }
     return map;
-  }, [allGames, followedTeams, now]);
+  }, [allGames, followedTeams, nowMs]);
 
   // ── Teams with NO games in range (for off-season display) ───────────────────
   const teamsWithNoGames = React.useMemo(() => {
@@ -434,11 +464,11 @@ export default function HomeScreen() {
         const hasGame = allGames.some((g: any) => {
           if (g.seattleTeam?.id !== seattleId) return false;
           const ts = parseKickoffMs(g.kickoff);
-          return ts ? (ts >= now - day7 && ts <= now + day14) : false;
+          return ts ? (ts >= nowMs - day7 && ts <= nowMs + day14) : false;
         });
         return !hasGame;
       });
-  }, [allGames, followedTeams, now]);
+  }, [allGames, followedTeams, nowMs]);
 
   // ── College sport picker data ────────────────────────────────────────────────
   function getCollegePickerTeams(groupKey: string): CollegePickerTeam[] {

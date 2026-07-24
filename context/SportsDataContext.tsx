@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface SportsDataContextType {
@@ -35,16 +35,16 @@ export function SportsDataProvider({ children }: { children: React.ReactNode }) 
     });
   }, []);
 
-  const setSelectedSport = (sport: string) => {
+  const setSelectedSport = useCallback((sport: string) => {
     setSelectedSportState(sport);
     AsyncStorage.setItem('selectedSport', sport);
-  };
+  }, []);
 
-  const setActiveFilter = (teamId: string) => {
+  const setActiveFilter = useCallback((teamId: string) => {
     setActiveFilterState(teamId);
-  };
+  }, []);
 
-  const toggleFollowTeam = (teamId: string) => {
+  const toggleFollowTeam = useCallback((teamId: string) => {
     setFollowedTeams((prev) => {
       const next = prev.includes(teamId)
         ? prev.filter((id) => id !== teamId)
@@ -54,14 +54,18 @@ export function SportsDataProvider({ children }: { children: React.ReactNode }) 
       AsyncStorage.setItem('followedTeams', JSON.stringify(next));
       return next;
     });
-  };
+  }, [activeFilter]);
 
-  const isFollowing = (teamId: string) => followedTeams.includes(teamId);
+  const isFollowing = useCallback((teamId: string) => followedTeams.includes(teamId), [followedTeams]);
+
+  // Memoize context value so consumers only re-render when relevant state changes.
+  const contextValue = useMemo(
+    () => ({ selectedSport, setSelectedSport, followedTeams, toggleFollowTeam, isFollowing, activeFilter, setActiveFilter }),
+    [selectedSport, setSelectedSport, followedTeams, toggleFollowTeam, isFollowing, activeFilter, setActiveFilter]
+  );
 
   return (
-    <SportsDataContext.Provider
-      value={{ selectedSport, setSelectedSport, followedTeams, toggleFollowTeam, isFollowing, activeFilter, setActiveFilter }}
-    >
+    <SportsDataContext.Provider value={contextValue}>
       {children}
     </SportsDataContext.Provider>
   );

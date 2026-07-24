@@ -1,3 +1,5 @@
+import { getCached, setCached, TTL } from './cache';
+
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://scorpanion.com';
 const SCORPANION = 'https://scorpanion.com';
 
@@ -22,13 +24,19 @@ export async function fetchSchedule(sport?: string, date?: string) {
 }
 
 export async function fetchStandings(sport?: string, league?: string) {
+  const key = `standings:${sport ?? ''}:${league ?? ''}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
   const params = new URLSearchParams();
   if (sport) params.set('sport', sport);
   if (league) params.set('league', league);
   const url = `${API_BASE}/api/standings?${params}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  setCached(key, data, TTL.STANDINGS);
+  return data;
 }
 
 export async function fetchBoxscore(gameId: string, sport?: string) {
@@ -41,29 +49,47 @@ export async function fetchBoxscore(gameId: string, sport?: string) {
 }
 
 export async function fetchTeams(sport?: string) {
+  const key = `teams:${sport ?? ''}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
   const params = new URLSearchParams();
   if (sport) params.set('sport', sport);
   const url = `${API_BASE}/api/teams?${params}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  setCached(key, data, TTL.TEAMS);
+  return data;
 }
 
 export async function fetchTeamDetailByLeague(teamId: string, league: string) {
+  const key = `team-detail:${teamId}:${league}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
   const params = new URLSearchParams({ teamId, league });
   const url = `${SCORPANION}/api/team-detail?${params}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  setCached(key, data, TTL.TEAM_DETAIL);
+  return data;
 }
 
 export async function fetchTeamDetail(teamId: string, sport?: string) {
+  const key = `team-detail:${teamId}:${sport ?? ''}`;
+  const cached = getCached(key);
+  if (cached) return cached;
+
   const params = new URLSearchParams({ teamId });
   if (sport) params.set('sport', sport);
   const url = `${API_BASE}/api/team-detail?${params}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  setCached(key, data, TTL.TEAM_DETAIL);
+  return data;
 }
 
 /** Fetch PGA or LPGA tournaments from the webapp API.
@@ -72,5 +98,12 @@ export async function fetchGolf(tour: 'pga' | 'lpga') {
   const url = `${SCORPANION}/api/${tour}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const data = await res.json();
+
+  // Only cache when no live tournament is active to keep live scores fresh.
+  const hasLive = Array.isArray(data) && data.some((t: any) => t.status === 'live');
+  if (!hasLive) {
+    setCached(`golf:${tour}`, data, TTL.GOLF);
+  }
+  return data;
 }

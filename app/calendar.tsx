@@ -68,8 +68,10 @@ export default function CalendarScreen() {
 
   // Load games once
   useEffect(() => {
+    let mounted = true;
     fetchSchedule()
       .then((raw) => {
+        if (!mounted) return;
         const list: any[] = Array.isArray(raw) ? raw : raw.games ?? raw.events ?? [];
         // Deduplicate by game id
         const seen = new Set<string>();
@@ -81,8 +83,9 @@ export default function CalendarScreen() {
         });
         setAllGames(deduped);
       })
-      .catch(() => setAllGames([]))
-      .finally(() => setLoading(false));
+      .catch(() => { if (mounted) setAllGames([]); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
   }, []);
 
   // Games for a given date

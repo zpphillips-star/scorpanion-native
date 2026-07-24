@@ -88,11 +88,13 @@ export default function StandingsScreen() {
   const [sortAsc, setSortAsc] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
     setLoading(true);
     fetchStandings(selected.sport, selected.league)
-      .then((res) => setRows(flattenStandings(res)))
-      .catch(() => setRows([]))
-      .finally(() => setLoading(false));
+      .then((res) => { if (mounted) setRows(flattenStandings(res)); })
+      .catch(() => { if (mounted) setRows([]); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
   }, [selected]);
 
   function toggleSort(key: 'W' | 'L' | 'PCT') {
@@ -157,8 +159,11 @@ export default function StandingsScreen() {
           <FlatList
             data={rows}
             keyExtractor={(_, i) => String(i)}
-            renderItem={({ item, index }) => {
-              if (item.type === 'header') {
+            removeClippedSubviews
+            maxToRenderPerBatch={20}
+            windowSize={11}
+            initialNumToRender={20}
+            renderItem={({ item, index }) => {              if (item.type === 'header') {
                 return (
                   <View style={styles.divisionHeader}>
                     <Text style={styles.divisionName}>{item.name}</Text>

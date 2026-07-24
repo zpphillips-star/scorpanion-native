@@ -201,6 +201,7 @@ export default function GameDetailSheet({ game, onClose }: Props) {
 
   // ── Fetch team details ──
   useEffect(() => {
+    let mounted = true;
     const seaId = game.seattleTeam.espnId || game.seattleTeam.id;
     const oppId = game.opponent.id;
     const league = game.league;
@@ -209,9 +210,11 @@ export default function GameDetailSheet({ game, onClose }: Props) {
       fetch(`https://scorpanion.com/api/team-detail?teamId=${encodeURIComponent(seaId)}&league=${encodeURIComponent(league)}`).then(r => r.ok ? r.json() : null),
       fetch(`https://scorpanion.com/api/team-detail?teamId=${encodeURIComponent(oppId)}&league=${encodeURIComponent(league)}`).then(r => r.ok ? r.json() : null),
     ]).then(([sea, opp]) => {
+      if (!mounted) return;
       if (sea) setSeaDetail(sea);
       if (opp) setOppDetail(opp);
     }).catch(() => {});
+    return () => { mounted = false; };
   }, [game.id]);
 
   // ── Pulsing live dot ──
