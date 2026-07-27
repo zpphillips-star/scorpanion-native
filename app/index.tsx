@@ -425,7 +425,7 @@ export default function HomeScreen() {
       const ds = t.startDate ? t.startDate.split('T')[0] : undefined;
       if (!ds || ds <= today) return;
       if (!golfUpcomingByDate[ds]) golfUpcomingByDate[ds] = [];
-      golfUpcomingByDate[ds].push({ tournament: t, label, accentColor });
+      golfUpcomingByDate[ds].push({ tournament: t, label, accentColor, teeTime: t.firstTeeTime });
     }
   };
   pgaUpcoming.forEach(t  => addGolfToDate(t, 'PGA Tour', '#CBA135'));

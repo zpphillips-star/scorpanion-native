@@ -298,6 +298,15 @@ export default function CalendarScreen() {
             )}
             <View style={{ height: 32 }} />
           </ScrollView>
+
+          {/* X close — after ScrollView so it paints on top */}
+          <TouchableOpacity
+            style={styles.calCloseBtn}
+            onPress={closePopup}
+            hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}
+          >
+            <Text style={styles.calCloseBtnText}>✕</Text>
+          </TouchableOpacity>
         </Animated.View>
       </Modal>
 
@@ -351,4 +360,12 @@ const styles = StyleSheet.create({
   liveDot:    { width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#FFB400' },
   liveText:   { color: '#FFB400', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
   noGames:    { color: TEXT_FAINT, fontSize: 13, textAlign: 'center', marginTop: 30 },
+  calCloseBtn: {
+    position: 'absolute', top: 14, right: 16,
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center', justifyContent: 'center',
+    zIndex: 10, elevation: 10,
+  },
+  calCloseBtnText: { color: 'rgba(255,255,255,0.65)', fontSize: 15 },
 });

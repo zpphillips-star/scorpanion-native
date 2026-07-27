@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Modal,
   View,
   Text,
   TouchableOpacity,
@@ -128,12 +127,13 @@ export default function TeamDetailSheet({ teamId, teamName, teamLogo, league, on
   const logo = data?.logo ?? teamLogo ?? '';
 
   return (
-    <Modal transparent visible animationType="none" onRequestClose={closeSheet} statusBarTranslucent>
-      <View style={StyleSheet.absoluteFillObject}>
-        {/* Backdrop */}
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={closeSheet}>
-          <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.8)', opacity: backdropOpacity }]} />
-        </TouchableOpacity>
+    // Rendered as an absolute-positioned overlay (no own Modal) so it stacks
+    // correctly above the parent GameDetailSheet Modal on Android.
+    <View style={[StyleSheet.absoluteFillObject, styles.overlay]}>
+      {/* Backdrop */}
+      <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={closeSheet}>
+        <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.8)', opacity: backdropOpacity }]} />
+      </TouchableOpacity>
 
         {/* Sheet */}
         <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]} onStartShouldSetResponder={() => true}>
@@ -141,11 +141,6 @@ export default function TeamDetailSheet({ teamId, teamName, teamLogo, league, on
           <View {...panResponder.panHandlers} style={styles.dragArea}>
             <View style={styles.dragHandle} />
           </View>
-
-          {/* Close button */}
-          <TouchableOpacity style={styles.closeBtn} onPress={closeSheet}>
-            <Text style={styles.closeBtnText}>✕</Text>
-          </TouchableOpacity>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
@@ -307,15 +302,29 @@ export default function TeamDetailSheet({ teamId, teamName, teamLogo, league, on
 
             <View style={{ height: 40 }} />
           </ScrollView>
+
+          {/* Close button — after ScrollView so it paints on top; hitSlop + zIndex/elevation for reliable taps */}
+          <TouchableOpacity
+            style={styles.closeBtn}
+            onPress={closeSheet}
+            hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}
+          >
+            <Text style={styles.closeBtnText}>✕</Text>
+          </TouchableOpacity>
         </Animated.View>
-      </View>
-    </Modal>
+    </View>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  // Overlay wrapper — absolute-fill inside the parent Modal window so Android
+  // correctly stacks this above the game sheet without a nested Modal.
+  overlay: {
+    zIndex: 100,
+    elevation: 100,
+  },
   sheet: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     height: SHEET_HEIGHT,
@@ -326,11 +335,12 @@ const styles = StyleSheet.create({
   dragHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)' },
   closeBtn: {
     position: 'absolute', top: 12, right: 16,
-    width: 32, height: 32, borderRadius: 16,
+    width: 36, height: 36, borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center', justifyContent: 'center',
+    zIndex: 10, elevation: 10,
   },
-  closeBtnText: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
+  closeBtnText: { color: 'rgba(255,255,255,0.75)', fontSize: 16 },
   scroll: { paddingHorizontal: 16, paddingBottom: 40 },
 
   // Hero

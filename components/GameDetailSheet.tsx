@@ -277,7 +277,13 @@ export default function GameDetailSheet({ game, onClose }: Props) {
 
   return (
     <>
-      <Modal transparent visible animationType="none" onRequestClose={closeSheet} statusBarTranslucent>
+      <Modal
+        transparent
+        visible
+        animationType="none"
+        onRequestClose={teamSheet ? () => setTeamSheet(null) : closeSheet}
+        statusBarTranslucent
+      >
         <View style={StyleSheet.absoluteFillObject}>
           {/* Backdrop */}
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={closeSheet}>
@@ -290,11 +296,6 @@ export default function GameDetailSheet({ game, onClose }: Props) {
             <View {...panResponder.panHandlers} style={styles.dragArea}>
               <View style={styles.dragHandle} />
             </View>
-
-            {/* Close button */}
-            <TouchableOpacity style={styles.closeBtn} onPress={closeSheet}>
-              <Text style={styles.closeBtnText}>✕</Text>
-            </TouchableOpacity>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
@@ -433,6 +434,17 @@ export default function GameDetailSheet({ game, onClose }: Props) {
 
               <View style={{ height: 40 }} />
             </ScrollView>
+
+            {/* Close button — rendered AFTER ScrollView so it paints on top
+                and its touch target isn't intercepted by the scroll layer.
+                hitSlop enlarges the tap area; zIndex/elevation for Android. */}
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={closeSheet}
+              hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}
+            >
+              <Text style={styles.closeBtnText}>✕</Text>
+            </TouchableOpacity>
           </Animated.View>
 
           {/* Nested TeamDetailSheet — rendered INSIDE this Modal so it stacks
@@ -471,11 +483,12 @@ const styles = StyleSheet.create({
   dragHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' },
   closeBtn: {
     position: 'absolute', top: 12, right: 16,
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center', justifyContent: 'center',
+    zIndex: 10, elevation: 10,
   },
-  closeBtnText: { color: 'rgba(255,255,255,0.6)', fontSize: 13 },
+  closeBtnText: { color: 'rgba(255,255,255,0.75)', fontSize: 16 },
   scroll: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40 },
 
   // Hero
