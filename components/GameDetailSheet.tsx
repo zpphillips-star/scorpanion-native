@@ -434,19 +434,21 @@ export default function GameDetailSheet({ game, onClose }: Props) {
               <View style={{ height: 40 }} />
             </ScrollView>
           </Animated.View>
+
+          {/* Nested TeamDetailSheet — rendered INSIDE this Modal so it stacks
+              above the game sheet on both iOS and Android (avoids the Android
+              z-index issue where a sibling Modal can appear behind the first). */}
+          {teamSheet && (
+            <TeamDetailSheet
+              teamId={teamSheet.teamId}
+              teamName={teamSheet.teamName}
+              teamLogo={teamSheet.teamLogo}
+              league={teamSheet.league}
+              onClose={() => setTeamSheet(null)}
+            />
+          )}
         </View>
       </Modal>
-
-      {/* Nested TeamDetailSheet */}
-      {teamSheet && (
-        <TeamDetailSheet
-          teamId={teamSheet.teamId}
-          teamName={teamSheet.teamName}
-          teamLogo={teamSheet.teamLogo}
-          league={teamSheet.league}
-          onClose={() => setTeamSheet(null)}
-        />
-      )}
     </>
   );
 }

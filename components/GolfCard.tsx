@@ -182,23 +182,60 @@ interface GolfUpcomingRowProps {
   accentColor: string
   onPress: () => void
   noDivider?: boolean
+  /** ISO string of first tee time for this specific round (from PGA Tour GraphQL). */
+  teeTime?: string
+  /** Round label for this row (e.g. "R1", "R2"). */
+  roundLabel?: string
 }
 
-export function GolfUpcomingRow({ tournament, label, accentColor, onPress, noDivider }: GolfUpcomingRowProps) {
+export function GolfUpcomingRow({ tournament, label, accentColor, onPress, noDivider, teeTime, roundLabel }: GolfUpcomingRowProps) {
+  const logoUrl = label === 'LPGA'
+    ? 'https://a.espncdn.com/combiner/i?img=/i/teamlogos/leagues/500-dark/lpga.png'
+    : 'https://a.espncdn.com/combiner/i?img=/i/teamlogos/leagues/500-dark/pgatour.png';
+
+  // Tee time takes priority; fallback to date range
+  const teeTimeStr = teeTime
+    ? new Date(teeTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+    : null;
+
+  const dateRangeStr = (() => {
+    const fmt = (iso: string) => {
+      try {
+        const [y, m, d] = iso.split('T')[0].split('-').map(Number);
+        return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      } catch { return ''; }
+    };
+    const s = fmt(tournament.startDate);
+    const e = tournament.endDate ? fmt(tournament.endDate) : '';
+    return e && e !== s ? `${s}–${e}` : s;
+  })();
+
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={[styles.upcomingRow, noDivider && { borderBottomWidth: 0 }]}>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <View style={styles.upcomingLabelRow}>
-          <Text style={[styles.upcomingTourLabel, { color: accentColor }]}>{label}</Text>
-          {tournament.course ? (
-            <Text style={styles.upcomingCourse} numberOfLines={1}> · {tournament.course}</Text>
-          ) : null}
-        </View>
+      {/* Left: logo + label */}
+      <View style={styles.upcomingLeft}>
+        <Image source={{ uri: logoUrl }} style={styles.upcomingLogo} resizeMode="contain" />
+        <Text style={[styles.upcomingTourLabel, { color: accentColor }]}>{label}</Text>
+      </View>
+
+      {/* Center: tee time or date range */}
+      <View style={styles.upcomingCenter}>
+        {teeTimeStr ? (
+          <Text style={styles.upcomingTeeTime}>{teeTimeStr}</Text>
+        ) : (
+          <Text style={styles.upcomingDate}>{dateRangeStr}</Text>
+        )}
+      </View>
+
+      {/* Right: tournament name + round */}
+      <View style={styles.upcomingRight}>
         <Text style={styles.upcomingName} numberOfLines={1}>
           {tournament.shortName || tournament.name}
         </Text>
+        {roundLabel ? (
+          <Text style={styles.upcomingRound}>{roundLabel}</Text>
+        ) : null}
       </View>
-      <Text style={styles.upcomingDate}>{fmtDate(tournament.startDate)}</Text>
     </TouchableOpacity>
   );
 }
@@ -264,7 +301,7 @@ const styles = StyleSheet.create({
   miniWinner: { color: '#d4d4d8', fontSize: 14, fontWeight: '800', maxWidth: 56 },
   miniScore: { fontSize: 17, fontWeight: '800' },
 
-  // Upcoming row
+  // Upcoming row — 3-column grid: [logo+label | tee time | name+round]
   upcomingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -273,11 +310,32 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.08)',
-    gap: 12,
+    gap: 8,
   },
-  upcomingLabelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 3 },
+  upcomingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  upcomingLogo: { width: 22, height: 22 },
   upcomingTourLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
+  upcomingCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 70,
+  },
+  upcomingTeeTime: { color: TEXT, fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  upcomingDate: { color: TEXT_FAINT, fontSize: 11, fontWeight: '500', textAlign: 'center' },
+  upcomingRight: {
+    flex: 1,
+    alignItems: 'flex-start',
+    gap: 2,
+  },
+  upcomingName: { color: TEXT, fontSize: 13, fontWeight: '600' },
+  upcomingRound: { color: TEXT_FAINT, fontSize: 10, fontWeight: '600', letterSpacing: 0.5 },
+  // Legacy — kept for any external references
+  upcomingLabelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 3 },
   upcomingCourse: { color: '#52525b', fontSize: 10, flex: 1 },
-  upcomingName: { color: TEXT, fontSize: 14, fontWeight: '600', lineHeight: 18 },
-  upcomingDate: { color: TEXT_FAINT, fontSize: 12, fontWeight: '500', flexShrink: 0 },
 });

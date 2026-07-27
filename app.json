@@ -3,7 +3,7 @@
     "name": "Scorpanion",
     "slug": "z-plot-industries",
     "owner": "z-plot-industries",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "scorpanion",
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.zachphillips.scorpanion",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundColor": "#0c1b31"

@@ -230,7 +230,7 @@ export default function HomeScreen() {
   const [selectedGame, setSelectedGame] = useState<ScorpanionGame | null>(null);
   const [collegePicker, setCollegePicker] = useState<string | null>(null); // 'uw' | 'wsu' | 'seattleu'
   const [selectedGolfUpcoming, setSelectedGolfUpcoming] = useState<{
-    tournament: PGATournament; label: string; accentColor: string;
+    tournament: PGATournament; label: string; accentColor: string; roundLabel?: string; teeTime?: string;
   } | null>(null);
   const intervalRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFirstLoadRef = useRef(true); // tracks whether initial data has ever loaded
@@ -408,8 +408,9 @@ export default function HomeScreen() {
     return Object.entries(map);
   }, [upcoming, filteredGames]);
 
-  // Golf upcoming: add earliest upcoming per tournament
-  const golfUpcomingByDate: Record<string, { tournament: PGATournament; label: string; accentColor: string }[]> = {};
+  // Golf upcoming: add one entry per round (with tee time) or fallback to startDate
+  type GolfUpcomingItem = { tournament: PGATournament; label: string; accentColor: string; roundLabel?: string; teeTime?: string };
+  const golfUpcomingByDate: Record<string, GolfUpcomingItem[]> = {};
   const addGolfToDate = (t: PGATournament, label: string, accentColor: string) => {
     // If tournament has per-round dates, add one entry per round; else use startDate
     if (t.rounds && t.rounds.length > 0) {
@@ -418,7 +419,7 @@ export default function HomeScreen() {
         const ds = round.date.split('T')[0];
         if (ds <= today) continue; // only future rounds
         if (!golfUpcomingByDate[ds]) golfUpcomingByDate[ds] = [];
-        golfUpcomingByDate[ds].push({ tournament: t, label, accentColor });
+        golfUpcomingByDate[ds].push({ tournament: t, label, accentColor, roundLabel: round.label, teeTime: round.teeTime });
       }
     } else {
       const ds = t.startDate ? t.startDate.split('T')[0] : undefined;
@@ -574,17 +575,22 @@ export default function HomeScreen() {
                   {games.map((g) => (
                     <GameCard key={g.gameId} {...g} compact noDivider onPress={() => { const raw = rawById.get(g.gameId); if (raw) setSelectedGame(raw); }} />
                   ))}
-                  {golfItems.map(({ tournament: t, label, accentColor }, idx) => {
-                    if (shownGolfIds.has(t.id)) return null;
-                    shownGolfIds.add(t.id);
+                  {golfItems.map(({ tournament: t, label, accentColor, roundLabel, teeTime }, idx) => {
+                    // When per-round entries exist, each (t.id + roundLabel) is unique;
+                    // without round data, deduplicate by tournament id.
+                    const dedupeKey = roundLabel ? `${t.id}-${roundLabel}` : t.id;
+                    if (shownGolfIds.has(dedupeKey)) return null;
+                    shownGolfIds.add(dedupeKey);
                     return (
                       <GolfUpcomingRow
                         key={`golf-${t.id}-${ds}-${idx}`}
                         tournament={t}
                         label={label}
                         accentColor={accentColor}
+                        teeTime={teeTime}
+                        roundLabel={roundLabel}
                         noDivider
-                        onPress={() => setSelectedGolfUpcoming({ tournament: t, label, accentColor })}
+                        onPress={() => setSelectedGolfUpcoming({ tournament: t, label, accentColor, roundLabel, teeTime })}
                       />
                     );
                   })}
