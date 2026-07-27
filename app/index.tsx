@@ -145,32 +145,52 @@ function MiniCard({ game, onPress }: { game: NormalizedGame; onPress: () => void
   const awayWon = game.status === 'Final' && Number(game.awayScore) > Number(game.homeScore);
   const homeWon = game.status === 'Final' && Number(game.homeScore) > Number(game.awayScore);
   const dayLabel = getDayLabel(game.kickoff);
+  const hasScore = game.awayScore !== undefined || game.homeScore !== undefined;
+
+  const awayLogo = game.awayTeam.logo
+    ? <Image source={{ uri: game.awayTeam.logo }} style={styles.miniLogo} resizeMode="contain" />
+    : <View style={styles.miniLogoFallback}><Text style={styles.miniLogoText}>{game.awayTeam.abbreviation?.slice(0,3)}</Text></View>;
+  const homeLogo = game.homeTeam.logo
+    ? <Image source={{ uri: game.homeTeam.logo }} style={styles.miniLogo} resizeMode="contain" />
+    : <View style={styles.miniLogoFallback}><Text style={styles.miniLogoText}>{game.homeTeam.abbreviation?.slice(0,3)}</Text></View>;
+
   return (
     <TouchableOpacity onPress={onPress} style={styles.miniCard} activeOpacity={0.7}>
+      {/* Day/sport label */}
       <Text style={styles.miniSport}>{dayLabel}</Text>
-      <View style={styles.miniTeams}>
-        <View style={styles.miniTeamCol}>
-          {game.awayTeam.logo
-            ? <Image source={{ uri: game.awayTeam.logo }} style={styles.miniLogo} resizeMode="contain" />
-            : <View style={styles.miniLogoFallback}><Text style={styles.miniLogoText}>{game.awayTeam.abbreviation?.slice(0,3)}</Text></View>
-          }
-          <Text style={[styles.miniAbbr, homeWon && styles.miniLoserAbbr]}>{game.awayTeam.abbreviation}</Text>
-          {game.awayScore !== undefined && (
-            <Text style={[styles.miniScore, homeWon && styles.miniLoserScore]}>{game.awayScore}</Text>
-          )}
+
+      {/* Logo row — dash sits between the two logos so it is vertically centered at logo level */}
+      <View style={styles.miniLogoRow}>
+        <View style={styles.miniLogoCell}>{awayLogo}</View>
+        <View style={styles.miniDashCell}>
+          <Text style={styles.miniDash}>–</Text>
         </View>
-        <Text style={styles.miniDash}>–</Text>
-        <View style={styles.miniTeamCol}>
-          {game.homeTeam.logo
-            ? <Image source={{ uri: game.homeTeam.logo }} style={styles.miniLogo} resizeMode="contain" />
-            : <View style={styles.miniLogoFallback}><Text style={styles.miniLogoText}>{game.homeTeam.abbreviation?.slice(0,3)}</Text></View>
-          }
-          <Text style={[styles.miniAbbr, awayWon && styles.miniLoserAbbr]}>{game.homeTeam.abbreviation}</Text>
-          {game.homeScore !== undefined && (
-            <Text style={[styles.miniScore, awayWon && styles.miniLoserScore]}>{game.homeScore}</Text>
-          )}
-        </View>
+        <View style={styles.miniLogoCell}>{homeLogo}</View>
       </View>
+
+      {/* Abbreviation row — columns aligned under logos */}
+      <View style={styles.miniAbbrRow}>
+        <Text style={[styles.miniAbbr, homeWon && styles.miniLoserAbbr]} numberOfLines={1}>
+          {game.awayTeam.abbreviation}
+        </Text>
+        <View style={styles.miniDashCell} />
+        <Text style={[styles.miniAbbr, awayWon && styles.miniLoserAbbr]} numberOfLines={1}>
+          {game.homeTeam.abbreviation}
+        </Text>
+      </View>
+
+      {/* Score row — only shown when scores are available */}
+      {hasScore && (
+        <View style={styles.miniAbbrRow}>
+          <Text style={[styles.miniScore, homeWon && styles.miniLoserScore]}>
+            {game.awayScore ?? '–'}
+          </Text>
+          <View style={styles.miniDashCell} />
+          <Text style={[styles.miniScore, awayWon && styles.miniLoserScore]}>
+            {game.homeScore ?? '–'}
+          </Text>
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -235,6 +255,8 @@ export default function HomeScreen() {
   const intervalRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFirstLoadRef = useRef(true); // tracks whether initial data has ever loaded
   const appStateRef    = useRef<AppStateStatus>(AppState.currentState);
+  // Track whether any game was live on the last poll so we can detect transitions.
+  const wasLiveRef     = useRef(false);
 
   // Clear college picker when global filter changes to a non-college item
   useEffect(() => {
@@ -256,19 +278,37 @@ export default function HomeScreen() {
     // Only show full-screen loading spinner on initial load (not on background polls).
     else if (isFirstLoadRef.current) setLoading(true);
     try {
-      const raw  = await fetchSchedule();
+      // Add cache-bust so fetch() (and any intermediate proxy) always returns fresh data.
+      const raw  = await fetchSchedule(undefined, undefined, `_cb=${Date.now()}`);
       const list = Array.isArray(raw) ? raw : raw.games ?? raw.events ?? [];
       setAllGames(list);
       isFirstLoadRef.current = false;
+
+      // Restart the polling interval when live-game state transitions so we can
+      // switch between LIVE_INTERVAL (5 s) and IDLE_INTERVAL (20 s) without waiting
+      // for the next tick of the old interval.
+      const nowLive = list.some((g: any) => g.status === 'live');
+      if (nowLive !== wasLiveRef.current) {
+        wasLiveRef.current = nowLive;
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        intervalRef.current = setInterval(() => load(), nowLive ? LIVE_INTERVAL : IDLE_INTERVAL);
+      }
     } catch {}
     setLoading(false);
     setRefreshing(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Start polling; pause when app is backgrounded to save battery.
+  // Polling intervals:
+  //   LIVE_INTERVAL  – fast polling when a game is in progress (5 s)
+  //   IDLE_INTERVAL  – background polling for pre-game / final state changes (20 s)
+  const LIVE_INTERVAL = 5_000;
+  const IDLE_INTERVAL = 20_000;
+
+  // Start polling; adjust interval when live-game state changes; pause when backgrounded.
   useEffect(() => {
     load();
-    intervalRef.current = setInterval(() => load(), 30_000);
+    intervalRef.current = setInterval(() => load(), IDLE_INTERVAL);
 
     const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       const prev = appStateRef.current;
@@ -277,7 +317,8 @@ export default function HomeScreen() {
       if (nextState === 'active' && prev.match(/inactive|background/)) {
         // Resumed from background — refresh immediately and restart interval.
         if (intervalRef.current) clearInterval(intervalRef.current);
-        intervalRef.current = setInterval(() => load(), 30_000);
+        const isCurrentlyLive = wasLiveRef.current;
+        intervalRef.current = setInterval(() => load(), isCurrentlyLive ? LIVE_INTERVAL : IDLE_INTERVAL);
         load();
       } else if (nextState.match(/inactive|background/) && prev === 'active') {
         // Going to background — pause polling to save battery.
@@ -292,6 +333,7 @@ export default function HomeScreen() {
       if (intervalRef.current) clearInterval(intervalRef.current);
       sub.remove();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   // Stable timestamps — recompute only when allGames data changes to avoid
@@ -711,18 +753,32 @@ const styles = StyleSheet.create({
   scheduleLinkText: { color: ACCENT, fontSize: 12, fontWeight: '600' },
 
   miniScroll: { paddingHorizontal: 16, gap: 0 },
-  miniCard:   { width: 120, paddingRight: 16, marginRight: 16, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.08)' },
-  miniSport:  { color: TEXT_FAINT, fontSize: 9, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 6 },
-  miniTeams:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  miniTeamCol:{ alignItems: 'center', gap: 3 },
+  miniCard: {
+    width: 112,
+    marginRight: 16,
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  miniSport:  { color: TEXT_FAINT, fontSize: 9, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 },
+  // Logo row: [logoCell][dashCell][logoCell] — dash is vertically centered at logo level
+  miniLogoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  miniLogoCell: { width: 28, alignItems: 'center' },
+  miniDashCell: { width: 20, alignItems: 'center', justifyContent: 'center' },
+  // Abbr/score rows reuse the same 3-column grid
+  miniAbbrRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 3 },
   miniLogo:   { width: 28, height: 28 },
   miniLogoFallback: { width: 28, height: 28, borderRadius: 4, backgroundColor: '#1a2d4a', alignItems: 'center', justifyContent: 'center' },
   miniLogoText: { color: TEXT_FAINT, fontSize: 8, fontWeight: '700' },
-  miniAbbr:   { color: '#F2E6CF', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  miniAbbr:   { color: '#F2E6CF', fontSize: 10, fontWeight: '700', letterSpacing: 0.5, width: 28, textAlign: 'center' },
   miniLoserAbbr: { color: 'rgb(63,79,98)' },
-  miniScore:  { color: '#F2E6CF', fontSize: 14, fontWeight: '800' },
+  miniScore:  { color: '#F2E6CF', fontSize: 14, fontWeight: '800', width: 28, textAlign: 'center' },
   miniLoserScore: { color: 'rgb(63,79,98)' },
-  miniDash:   { color: '#1e3050', fontSize: 14, fontWeight: '900', alignSelf: 'flex-end', marginBottom: 4 },
+  miniDash:   { color: '#1e3050', fontSize: 14, fontWeight: '900', textAlign: 'center' },
+  // Legacy — kept for safety but replaced by miniLogoRow/miniAbbrRow
+  miniTeams:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  miniTeamCol: { alignItems: 'center', gap: 3 },
 
   dateHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, gap: 10 },
   dateHeaderText:{ color: '#F2E6CF', fontSize: 11, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase' },

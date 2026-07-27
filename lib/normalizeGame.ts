@@ -125,6 +125,18 @@ function parseGameTime(kickoff: string): string | undefined {
 }
 
 /**
+ * Validate a parsed score. Returns the score if it's a valid non-negative integer,
+ * or undefined if it looks like bad/placeholder data.
+ * Baseball can go high in bad games (e.g. 20+), so we only reject truly absurd values.
+ */
+function validateScore(val: number | string | undefined): number | string | undefined {
+  if (val === undefined || val === null || val === '') return undefined;
+  const n = Number(val);
+  if (isNaN(n) || n < 0 || n > 150) return undefined;
+  return val;
+}
+
+/**
  * Normalize a game from the scorpanion /api/schedule response format.
  * The API returns Seattle-centric games: seattleTeam vs opponent.
  */
@@ -143,8 +155,6 @@ export function normalizeGame(raw: any): NormalizedGame {
     const homeTeamData  = isHome ? seattleTeam : opponent;
     const awayLogoUrl   = isHome ? opponentLogo : seattleLogo;
     const homeLogoUrl   = isHome ? seattleLogo  : opponentLogo;
-    const awayScore     = isHome ? raw.opponentScore : raw.seattleScore;
-    const homeScore     = isHome ? raw.seattleScore  : raw.opponentScore;
 
     // Status: scorpanion uses 'upcoming'|'live'|'ft', plus clock/period for live
     const status  = normalizeStatus(raw.status);
@@ -178,8 +188,8 @@ export function normalizeGame(raw: any): NormalizedGame {
         abbreviation: homeTeamData.abbr || '?',
         logo:         homeLogoUrl,
       },
-      awayScore,
-      homeScore,
+      awayScore:     validateScore(isHome ? raw.opponentScore : raw.seattleScore),
+      homeScore:     validateScore(isHome ? raw.seattleScore  : raw.opponentScore),
     };
   }
 
@@ -225,7 +235,7 @@ export function normalizeGame(raw: any): NormalizedGame {
       abbreviation: home.team?.abbreviation ?? 'HME',
       logo:         home.team?.logo,
     },
-    awayScore: away.score !== undefined ? away.score : undefined,
-    homeScore: home.score !== undefined ? home.score : undefined,
+    awayScore: validateScore(away.score !== undefined ? away.score : undefined),
+    homeScore: validateScore(home.score !== undefined ? home.score : undefined),
   };
 }

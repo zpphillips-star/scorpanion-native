@@ -13,12 +13,13 @@ export async function fetchLiveScores(sport?: string, date?: string) {
   return res.json();
 }
 
-export async function fetchSchedule(sport?: string, date?: string) {
+export async function fetchSchedule(sport?: string, date?: string, cacheBust?: string) {
   const params = new URLSearchParams();
   if (sport) params.set('sport', sport);
   if (date) params.set('date', date);
+  if (cacheBust) params.set('_cb', cacheBust.replace(/^_cb=/, ''));
   const url = `${API_BASE}/api/schedule?${params}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: { 'Cache-Control': 'no-cache, no-store' } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
