@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   View, Text, FlatList, ScrollView, RefreshControl,
   ActivityIndicator, TouchableOpacity, Image, StyleSheet, Modal,
-  AppState, AppStateStatus,
+  AppState, AppStateStatus, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -19,6 +19,13 @@ import type { ScorpanionGame } from '../lib/types';
 import { useSportsData } from '../context/SportsDataContext';
 import { ALL_PRO_TEAMS } from '../lib/allProTeams';
 import { OFFSEASON_DISPLAY, getApproxNextSeason } from '../lib/seasonDates';
+import {
+  getPushRegistrationState,
+  registerForPushNotificationsAfterApproval,
+  shouldShowPushOptInBanner,
+  snoozePushOptInBanner,
+  syncPushSubscriptions,
+} from '../lib/pushNotifications';
 
 // ── College group helpers ──────────────────────────────────────────────────────
 
@@ -252,6 +259,8 @@ export default function HomeScreen() {
   const [selectedGolfUpcoming, setSelectedGolfUpcoming] = useState<{
     tournament: PGATournament; label: string; accentColor: string; roundLabel?: string; teeTime?: string;
   } | null>(null);
+  const [showPushBanner, setShowPushBanner] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
   const intervalRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFirstLoadRef = useRef(true); // tracks whether initial data has ever loaded
   const appStateRef    = useRef<AppStateStatus>(AppState.currentState);
@@ -271,6 +280,43 @@ export default function HomeScreen() {
 
   const { tournaments: pgaTournaments }  = useGolfTournaments('pga',  pgaFollowed);
   const { tournaments: lpgaTournaments } = useGolfTournaments('lpga', lpgaFollowed);
+
+  useEffect(() => {
+    let cancelled = false;
+    shouldShowPushOptInBanner(followedTeams.length).then(show => {
+      if (!cancelled) setShowPushBanner(show);
+    });
+    return () => { cancelled = true; };
+  }, [followedTeams.length]);
+
+  useEffect(() => {
+    getPushRegistrationState().then(state => {
+      if (state.expoPushToken || state.nativeDevicePushToken) {
+        syncPushSubscriptions(followedTeams);
+      }
+    });
+  }, [followedTeams]);
+
+  async function enableScoreAlerts() {
+    setPushBusy(true);
+    try {
+      const result = await registerForPushNotificationsAfterApproval(followedTeams);
+      setShowPushBanner(false);
+      if (!result.ok) {
+        Alert.alert(
+          'Alerts not fully enabled',
+          result.state?.lastError || result.sync?.error || 'Permission or backend registration is not available yet.'
+        );
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  async function dismissScoreAlerts() {
+    await snoozePushOptInBanner();
+    setShowPushBanner(false);
+  }
 
   // ── Schedule load ────────────────────────────────────────────────────────────
   const load = useCallback(async (isRefresh = false) => {
@@ -562,6 +608,25 @@ export default function HomeScreen() {
         }
       >
 
+        {showPushBanner && (
+          <View style={styles.pushBanner}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.pushBannerTitle}>Follow your teams live</Text>
+              <Text style={styles.pushBannerBody}>
+                Get score alerts for starts, scoring plays, close games, and finals.
+              </Text>
+            </View>
+            <View style={styles.pushBannerActions}>
+              <TouchableOpacity onPress={dismissScoreAlerts} disabled={pushBusy} style={styles.pushBannerGhostBtn}>
+                <Text style={styles.pushBannerGhostText}>Not now</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={enableScoreAlerts} disabled={pushBusy} style={styles.pushBannerBtn}>
+                <Text style={styles.pushBannerBtnText}>{pushBusy ? 'Enabling…' : 'Enable alerts'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* ── RECENT section ─────────────────────────────────────────────────── */}
         {(recent.length > 0 || pgaRecent.length > 0 || lpgaRecent.length > 0) && (
           <View style={styles.section}>
@@ -708,6 +773,26 @@ const styles = StyleSheet.create({
   livePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(239,68,68,0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   liveDot:  { width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef4444' },
   liveText: { color: '#f87171', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  pushBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 2,
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(217,92,23,0.45)',
+    backgroundColor: 'rgba(217,92,23,0.12)',
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  pushBannerTitle: { color: '#F2E6CF', fontSize: 15, fontWeight: '800', marginBottom: 3 },
+  pushBannerBody: { color: TEXT_FAINT, fontSize: 12, lineHeight: 16 },
+  pushBannerActions: { gap: 8, alignItems: 'flex-end' },
+  pushBannerBtn: { backgroundColor: '#D95C17', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+  pushBannerBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  pushBannerGhostBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+  pushBannerGhostText: { color: TEXT_FAINT, fontSize: 12, fontWeight: '700' },
 
   // Filter bar
   filterBarScroll: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.07)' },

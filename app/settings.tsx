@@ -9,8 +9,9 @@ import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import Svg, { Path } from 'react-native-svg';
 import { BG, ACCENT, TEXT_FAINT, BORDER, TEXT, SURFACE, SURFACE2 } from '../constants/theme';
-
-const SETTINGS_KEY = 'scorpanion:settings';
+import { SETTINGS_KEY } from '../lib/alertSettings';
+import { getPushRegistrationState, syncPushSubscriptions } from '../lib/pushNotifications';
+import { useSportsData } from '../context/SportsDataContext';
 
 interface Settings {
   darkMode: boolean;
@@ -18,7 +19,9 @@ interface Settings {
   scoreFormat: 'live' | 'score';
   gameStartAlerts: boolean;
   scoreChangeAlerts: boolean;
+  leadChangeAlerts: boolean;
   finalScoreAlerts: boolean;
+  closeGameAlerts: boolean;
   refreshRate: 2 | 5 | 10 | 30;
   preloadData: boolean;
 }
@@ -28,8 +31,10 @@ const DEFAULT_SETTINGS: Settings = {
   compactScores: false,
   scoreFormat: 'live',
   gameStartAlerts: true,
-  scoreChangeAlerts: false,
+  scoreChangeAlerts: true,
+  leadChangeAlerts: true,
   finalScoreAlerts: true,
+  closeGameAlerts: true,
   refreshRate: 5,
   preloadData: false,
 };
@@ -82,6 +87,7 @@ function SettingRow({ label, right, last }: { label: string; right: React.ReactN
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const { followedTeams } = useSportsData();
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const savedOpacity = useRef(new Animated.Value(0)).current;
 
@@ -97,6 +103,19 @@ export default function SettingsScreen() {
     const next = { ...settings, [key]: value };
     setSettings(next);
     AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    if (
+      key === 'gameStartAlerts' ||
+      key === 'scoreChangeAlerts' ||
+      key === 'leadChangeAlerts' ||
+      key === 'finalScoreAlerts' ||
+      key === 'closeGameAlerts'
+    ) {
+      getPushRegistrationState().then(state => {
+        if (state.expoPushToken || state.nativeDevicePushToken) {
+          syncPushSubscriptions(followedTeams, next);
+        }
+      });
+    }
     Animated.sequence([
       Animated.timing(savedOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
       Animated.delay(1500),
@@ -160,9 +179,17 @@ export default function SettingsScreen() {
             right={<CustomToggle value={settings.scoreChangeAlerts} onValueChange={v => update('scoreChangeAlerts', v)} />}
           />
           <SettingRow
+            label="Lead Change Alerts"
+            right={<CustomToggle value={settings.leadChangeAlerts} onValueChange={v => update('leadChangeAlerts', v)} />}
+          />
+          <SettingRow
             label="Final Score Alerts"
-            last
             right={<CustomToggle value={settings.finalScoreAlerts} onValueChange={v => update('finalScoreAlerts', v)} />}
+          />
+          <SettingRow
+            label="Close Game Late Alerts"
+            last
+            right={<CustomToggle value={settings.closeGameAlerts} onValueChange={v => update('closeGameAlerts', v)} />}
           />
         </View>
 
