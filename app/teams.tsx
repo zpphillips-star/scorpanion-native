@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, G } from 'react-native-svg';
 import { useSportsData } from '../context/SportsDataContext';
-import { ALL_PRO_TEAMS } from '../lib/allProTeams';
+import { ALL_PRO_TEAMS, ProTeam } from '../lib/allProTeams';
 
 import AppHeader from '../components/AppHeader';
 
@@ -91,7 +91,6 @@ function decodeTopo(topo: any): StatePath[] {
 
 // ─── Decode topojson at module level (synchronous, no async needed) ───────────
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const TOPO_DATA = require('../assets/states-10m.json');
 const STATIC_PATHS: StatePath[] = (() => {
   try { return decodeTopo(TOPO_DATA); } catch { return []; }
@@ -180,9 +179,10 @@ const SPORT_TABS = [
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function TeamsScreen() {
-  const { followedTeams, toggleFollowTeam, isFollowing } = useSportsData();
+  const { toggleFollowTeam, isFollowing } = useSportsData();
   const [activeTab, setActiveTab] = useState('ALL');
   const [selectedState, setSelectedState] = useState<string | null>(null);
+  const [selectedStateTeamId, setSelectedStateTeamId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const teamsPerState = useMemo(() => {
@@ -191,7 +191,26 @@ export default function TeamsScreen() {
     return map;
   }, []);
 
-  // Base filtered by tab + state + search
+  const handleStateSelect = (abbr: string) => {
+    setSelectedState(prev => {
+      const next = prev === abbr || !abbr ? null : abbr;
+      setSelectedStateTeamId(null);
+      return next;
+    });
+  };
+
+  const selectedStateTeams = useMemo(() => {
+    if (!selectedState) return [];
+    return ALL_PRO_TEAMS
+      .filter(t => t.state === selectedState)
+      .sort((a, b) => {
+        const leagueDelta = LEAGUES.findIndex(l => l.id === a.league) - LEAGUES.findIndex(l => l.id === b.league);
+        if (leagueDelta !== 0) return leagueDelta;
+        return a.name.localeCompare(b.name);
+      });
+  }, [selectedState]);
+
+  // Base filtered by tab + state + optional state-team quick filter + search
   const baseTeams = useMemo(() => {
     let base = ALL_PRO_TEAMS;
     if (activeTab === 'GOLF') {
@@ -200,6 +219,7 @@ export default function TeamsScreen() {
       base = base.filter(t => t.league === activeTab);
     }
     if (selectedState) base = base.filter(t => t.state === selectedState);
+    if (selectedStateTeamId) base = base.filter(t => t.id === selectedStateTeamId);
     if (search.trim()) {
       const q = search.toLowerCase();
       base = base.filter(t =>
@@ -210,12 +230,12 @@ export default function TeamsScreen() {
       );
     }
     return base;
-  }, [activeTab, selectedState, search, followedTeams]);
+  }, [activeTab, selectedState, selectedStateTeamId, search]);
 
   // Followed section (teams user follows, from baseTeams)
   const followedSection = useMemo(
     () => baseTeams.filter(t => isFollowing(t.id)).sort((a, b) => a.name.localeCompare(b.name)),
-    [baseTeams, followedTeams]
+    [baseTeams, isFollowing]
   );
 
   // League sections — only leagues present in baseTeams, in canonical order
@@ -234,9 +254,7 @@ export default function TeamsScreen() {
           return a.name.localeCompare(b.name);
         }),
     })).filter(s => s.teams.length > 0);
-  }, [baseTeams, followedTeams]);
-
-  const followCount = ALL_PRO_TEAMS.filter(t => isFollowing(t.id)).length;
+  }, [activeTab, baseTeams, isFollowing]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -288,15 +306,15 @@ export default function TeamsScreen() {
         <View style={styles.mapWrapper}>
           <USMap
             selectedState={selectedState}
-            onStateSelect={(abbr) => setSelectedState(selectedState === abbr ? null : abbr)}
+            onStateSelect={handleStateSelect}
             teamsPerState={teamsPerState}
           />
           {selectedState && (
             <TouchableOpacity
               style={styles.clearState}
-              onPress={() => setSelectedState(null)}
+              onPress={() => { setSelectedState(null); setSelectedStateTeamId(null); }}
             >
-              <Text style={styles.clearStateText}>✕ {selectedState}</Text>
+              <Text style={styles.clearStateText}>✕ {selectedState}{selectedStateTeamId ? ' team' : ''}</Text>
             </TouchableOpacity>
           )}
           {/* Map legend + hints */}
@@ -305,6 +323,65 @@ export default function TeamsScreen() {
             <Text style={{ color: FAINT, fontSize: 10 }}>Pinch to zoom · drag to pan</Text>
           </View>
         </View>
+
+        {selectedState && selectedStateTeams.length > 0 && (
+          <View style={styles.stateTeamsPanel}>
+            <View style={styles.stateTeamsHeader}>
+              <View>
+                <Text style={styles.stateTeamsEyebrow}>STATE TEAMS</Text>
+                <Text style={styles.stateTeamsTitle}>{selectedState} quick filters</Text>
+              </View>
+              <Text style={styles.stateTeamsCount}>{selectedStateTeams.length}</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.stateTeamsRow}
+            >
+              <TouchableOpacity
+                onPress={() => setSelectedStateTeamId(null)}
+                activeOpacity={0.75}
+                style={[
+                  styles.stateTeamChip,
+                  styles.stateTeamAllChip,
+                  !selectedStateTeamId && styles.stateTeamChipActive,
+                ]}
+              >
+                <Text style={[styles.stateTeamAllText, !selectedStateTeamId && styles.stateTeamTextActive]}>All</Text>
+                <Text style={styles.stateTeamLeagueText}>{selectedState}</Text>
+              </TouchableOpacity>
+
+              {selectedStateTeams.map(team => {
+                const isActive = selectedStateTeamId === team.id;
+                const followed = isFollowing(team.id);
+                return (
+                  <TouchableOpacity
+                    key={team.id}
+                    onPress={() => setSelectedStateTeamId(isActive ? null : team.id)}
+                    activeOpacity={0.75}
+                    style={[
+                      styles.stateTeamChip,
+                      followed && styles.stateTeamChipFollowed,
+                      isActive && styles.stateTeamChipActive,
+                    ]}
+                  >
+                    {followed && <View style={styles.stateTeamFollowDot} />}
+                    {team.logo
+                      ? <Image source={{ uri: team.logo }} style={styles.stateTeamLogo} resizeMode="contain" />
+                      : <View style={styles.stateTeamLogoFallback}><Text style={styles.stateTeamLogoText}>{team.abbr}</Text></View>
+                    }
+                    <View style={styles.stateTeamTextBlock}>
+                      <Text style={[styles.stateTeamName, isActive && styles.stateTeamTextActive]} numberOfLines={1}>
+                        {team.shortName}
+                      </Text>
+                      <Text style={styles.stateTeamLeagueText} numberOfLines={1}>{team.league} · {team.abbr}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Following section — only shown when teams are followed */}
         {followedSection.length > 0 && !search && (
@@ -362,7 +439,7 @@ export default function TeamsScreen() {
 
 // ─── TeamCard component ───────────────────────────────────────────────────────
 
-function TeamCard({ team, followed, onPress }: { team: any; followed: boolean; onPress: () => void }) {
+function TeamCard({ team, followed, onPress }: { team: ProTeam; followed: boolean; onPress: () => void }) {
   return (
     <TouchableOpacity
       style={[styles.teamCard, followed && styles.teamCardFollowed]}
@@ -430,6 +507,121 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: ACCENT,
   },
   clearStateText: { color: ACCENT, fontSize: 11, fontWeight: '700' },
+
+  // Selected-state horizontal team carousel
+  stateTeamsPanel: {
+    marginTop: 10,
+    marginHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(20,34,54,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,92,23,0.34)',
+  },
+  stateTeamsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+  },
+  stateTeamsEyebrow: {
+    color: ACCENT,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+  stateTeamsTitle: {
+    color: TEXT,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 1,
+  },
+  stateTeamsCount: {
+    color: TEXT,
+    fontSize: 11,
+    fontWeight: '800',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    overflow: 'hidden',
+  },
+  stateTeamsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingRight: 18,
+  },
+  stateTeamChip: {
+    width: 128,
+    height: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 9,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    position: 'relative',
+  },
+  stateTeamAllChip: {
+    width: 72,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 1,
+  },
+  stateTeamChipActive: {
+    borderColor: ACCENT,
+    backgroundColor: 'rgba(217,92,23,0.18)',
+  },
+  stateTeamChipFollowed: {
+    borderColor: 'rgba(217,92,23,0.42)',
+  },
+  stateTeamFollowDot: {
+    position: 'absolute',
+    top: 5,
+    right: 6,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: ACCENT,
+  },
+  stateTeamLogo: { width: 30, height: 30, flexShrink: 0 },
+  stateTeamLogoFallback: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: SURFACE2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  stateTeamLogoText: { color: FAINT, fontSize: 9, fontWeight: '800' },
+  stateTeamTextBlock: { flex: 1, minWidth: 0 },
+  stateTeamName: {
+    color: TEXT,
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 15,
+  },
+  stateTeamAllText: {
+    color: TEXT,
+    fontSize: 13,
+    fontWeight: '900',
+    lineHeight: 15,
+  },
+  stateTeamTextActive: { color: '#fff' },
+  stateTeamLeagueText: {
+    color: FAINT,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
 
   // League sections
   section: { marginTop: 16 },
