@@ -24,7 +24,7 @@ interface GameCardProps {
   onPress?: () => void;
   gameTime?: string;
   kickoff?: string;
-  formDots?: Array<'W' | 'L' | 'T'>;
+  formDots?: ('W' | 'L' | 'T')[];
   compact?: boolean;       // schedule/upcoming list style
   noDivider?: boolean;     // suppress bottom border in compact mode
   broadcasts?: string;     // broadcast network label
@@ -62,7 +62,59 @@ export default function GameCard({
     return () => a.stop();
   }, [isLive, pulse]);
 
-  // COMPACT MODE — 4-column row (schedule/upcoming)
+  // COMPACT UPCOMING MODE — clean phone-first matchup card.
+  // Upcoming games need more room for names/time than live/final score rows,
+  // so do not force them through the dense score layout.
+  if (compact && isUp) {
+    return (
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.upcomingCard,
+          pressed && { backgroundColor: 'rgba(255,255,255,0.04)' },
+        ]}
+      >
+        <View style={styles.upcomingTeamLeft}>
+          <Text style={styles.upcomingSideLabel}>Away</Text>
+          <View style={styles.upcomingTeamLineLeft}>
+            <Text style={styles.upcomingTeamNameLeft} numberOfLines={1}>
+              {awayTeam.name}
+            </Text>
+            {awayTeam.logo
+              ? <Image source={{ uri: awayTeam.logo }} style={styles.upcomingLogo} resizeMode="contain" />
+              : <View style={styles.upcomingLogoFallback}><Text style={styles.upcomingLogoText}>{awayTeam.abbreviation?.slice(0,3)}</Text></View>
+            }
+          </View>
+          <Text style={styles.upcomingAbbrLeft} numberOfLines={1}>{awayTeam.abbreviation}</Text>
+        </View>
+
+        <View style={styles.upcomingCenter}>
+          <Text style={styles.upcomingTime} numberOfLines={1} allowFontScaling={false}>
+            {gameTime ?? 'TBD'}
+          </Text>
+          <Text style={styles.upcomingVs}>vs</Text>
+          {sportLabel ? (
+            <Text style={styles.upcomingSport} numberOfLines={1}>{sportLabel}</Text>
+          ) : null}
+        </View>
+
+        <View style={styles.upcomingTeamRight}>
+          <Text style={styles.upcomingSideLabel}>Home</Text>
+          <View style={styles.upcomingTeamLineRight}>
+            {homeLogo(homeTeam)}
+            <Text style={styles.upcomingTeamNameRight} numberOfLines={1}>
+              {homeTeam.name}
+            </Text>
+          </View>
+          <Text style={styles.upcomingAbbrRight} numberOfLines={1}>{homeTeam.abbreviation}</Text>
+        </View>
+
+        <Text style={styles.upcomingChevron}>›</Text>
+      </Pressable>
+    );
+  }
+
+  // COMPACT LIVE/FINAL MODE — dense score-emphasis row
   if (compact) {
     return (
       <Pressable
@@ -98,7 +150,7 @@ export default function GameCard({
         {/* Score */}
         <View style={styles.compactScoreBlock}>
           {hasScore
-            ? <Text style={styles.compactScore}>{awayScore}–{homeScore}</Text>
+            ? <Text style={styles.compactScore} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} allowFontScaling={false}>{awayScore}–{homeScore}</Text>
             : <Text style={styles.compactVs}>vs</Text>
           }
         </View>
@@ -157,9 +209,9 @@ export default function GameCard({
           {hasScore ? (
             <>
               <View style={styles.scoreRow}>
-                <Text style={[styles.score, isFinal && homeWon && styles.scoreLoser]}>{awayScore}</Text>
+                <Text style={[styles.score, isFinal && homeWon && styles.scoreLoser]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} allowFontScaling={false}>{awayScore}</Text>
                 <Text style={styles.scoreDash}>–</Text>
-                <Text style={[styles.score, isFinal && awayWon && styles.scoreLoser]}>{homeScore}</Text>
+                <Text style={[styles.score, isFinal && awayWon && styles.scoreLoser]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} allowFontScaling={false}>{homeScore}</Text>
               </View>
               {isFinal && <Text style={styles.ftText}>FINAL</Text>}
             </>
@@ -266,11 +318,11 @@ const styles = StyleSheet.create({
   teamAbbr: { color: LOSER_COLOR, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', marginTop: -4 },
   winIndicator: { color: ACCENT, fontSize: 10, fontWeight: '900' },
 
-  scoreBlock: { width: 96, alignItems: 'center', gap: 2 },
-  scoreRow:   { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
-  score:      { color: '#F2E6CF', fontSize: 62, fontWeight: '900', fontFamily: FONT_BLACK, letterSpacing: -1, lineHeight: 66 },
+  scoreBlock: { width: 124, alignItems: 'center', gap: 2, flexShrink: 0 },
+  scoreRow:   { flexDirection: 'row', alignItems: 'baseline', gap: 1, flexWrap: 'nowrap' },
+  score:      { color: '#F2E6CF', fontSize: 46, fontWeight: '900', fontFamily: FONT_BLACK, letterSpacing: -0.6, lineHeight: 50, minWidth: 46, textAlign: 'center', fontVariant: ['tabular-nums'] },
   scoreLoser: { color: LOSER_COLOR },
-  scoreDash:  { color: '#1e3050', fontSize: 28, fontWeight: '900', marginHorizontal: 2 },
+  scoreDash:  { color: '#1e3050', fontSize: 22, fontWeight: '900', marginHorizontal: 1 },
   ftText:     { color: TEXT_FAINT, fontSize: 9, fontWeight: '700', letterSpacing: 3, textTransform: 'uppercase' },
   vs:         { color: '#1e3050', fontSize: 20, fontWeight: '900' },
   loserText:  { color: LOSER_COLOR },
@@ -305,8 +357,49 @@ const styles = StyleSheet.create({
   compactLogoFallback: { width: 26, height: 26, borderRadius: 4, backgroundColor: '#1a2d4a', alignItems: 'center', justifyContent: 'center' },
   compactLogoText:  { color: TEXT_FAINT, fontSize: 7, fontWeight: '700' },
   compactTeamName:  { color: '#F2E6CF', fontSize: 13, fontWeight: '600', flexShrink: 1 },
-  compactScoreBlock:{ width: 56, alignItems: 'center' },
-  compactScore:     { color: '#F2E6CF', fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  compactScoreBlock:{ width: 70, minWidth: 70, alignItems: 'center', flexShrink: 0 },
+  compactScore:     { color: '#F2E6CF', fontSize: 14, lineHeight: 18, fontWeight: '800', fontVariant: ['tabular-nums'], minWidth: 62, textAlign: 'center' },
   compactVs:        { color: TEXT_FAINT, fontSize: 12, fontWeight: '600' },
   compactChevron:   { color: TEXT_FAINT, fontSize: 20, paddingLeft: 4 },
+
+  // ── Upcoming compact card ──────────────────────────────────────────────────
+  upcomingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 12,
+    marginVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: SURFACE,
+  },
+  upcomingTeamLeft:  { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 2 },
+  upcomingTeamRight: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 2 },
+  upcomingTeamLineLeft:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 7, minWidth: 0 },
+  upcomingTeamLineRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 7, minWidth: 0 },
+  upcomingSideLabel: { color: '#2d4a6b', fontSize: 9, fontWeight: '800', letterSpacing: 1.1, textTransform: 'uppercase' },
+  upcomingTeamNameLeft:  { color: '#F2E6CF', fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'right', flexShrink: 1, minWidth: 0 },
+  upcomingTeamNameRight: { color: '#F2E6CF', fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'left', flexShrink: 1, minWidth: 0 },
+  upcomingAbbrLeft:  { color: TEXT_FAINT, fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', textAlign: 'right' },
+  upcomingAbbrRight: { color: TEXT_FAINT, fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', textAlign: 'left' },
+  upcomingLogo: { width: 24, height: 24, flexShrink: 0 },
+  upcomingLogoFallback: { width: 24, height: 24, borderRadius: 5, backgroundColor: '#1a2d4a', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  upcomingLogoText: { color: TEXT_FAINT, fontSize: 7, fontWeight: '800' },
+  upcomingCenter: {
+    width: 72,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 1,
+    marginHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.035)',
+  },
+  upcomingTime: { color: '#F2E6CF', fontSize: 12, lineHeight: 15, fontWeight: '800', fontVariant: ['tabular-nums'], textAlign: 'center' },
+  upcomingVs: { color: '#1e3050', fontSize: 12, lineHeight: 14, fontWeight: '900', textTransform: 'uppercase' },
+  upcomingSport: { color: TEXT_FAINT, fontSize: 8, lineHeight: 10, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
+  upcomingChevron: { color: TEXT_FAINT, fontSize: 20, paddingLeft: 4, marginRight: -2 },
 });

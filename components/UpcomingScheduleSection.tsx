@@ -25,24 +25,33 @@ function fmtShortDate(iso: string) {
 
 // ─── Schedule column ──────────────────────────────────────────────────────────
 
-function ScheduleCol({ games }: { games: UpcomingGame[] }) {
+function ScheduleBlock({ games, teamName }: { games: UpcomingGame[]; teamName: string }) {
   if (games.length === 0) {
-    return <Text style={sc.none}>No upcoming games</Text>;
+    return (
+      <View style={sc.block}>
+        <Text style={sc.blockTitle} numberOfLines={1}>{teamName}</Text>
+        <Text style={sc.none}>No upcoming games</Text>
+      </View>
+    );
   }
   return (
-    <View style={{ gap: 0 }}>
+    <View style={sc.block}>
+      <Text style={sc.blockTitle} numberOfLines={1}>{teamName}</Text>
       {games.map((g, i) => (
         <View
           key={i}
           style={[sc.row, i < games.length - 1 && sc.borderBottom]}
         >
-          <Text style={sc.date}>{fmtShortDate(g.date)}</Text>
+          <View style={sc.dateBox}>
+            <Text style={sc.date} numberOfLines={1}>{fmtShortDate(g.date)}</Text>
+            <Text style={sc.time} numberOfLines={1}>{g.time || 'TBD'}</Text>
+          </View>
           <Text style={sc.homeAway}>{g.isHome ? 'vs' : '@'}</Text>
           {g.oppLogo
             ? <Image source={{ uri: g.oppLogo }} style={sc.logo} resizeMode="contain" />
-            : null
+            : <View style={sc.logoFallback} />
           }
-          <Text style={sc.name} numberOfLines={1}>{g.opponent}</Text>
+          <Text style={sc.name} numberOfLines={1} ellipsizeMode="tail">{g.opponent}</Text>
         </View>
       ))}
     </View>
@@ -50,12 +59,25 @@ function ScheduleCol({ games }: { games: UpcomingGame[] }) {
 }
 
 const sc = StyleSheet.create({
-  row:        { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 4 },
-  borderBottom: { borderBottomWidth: 1, borderBottomColor: 'rgba(94,103,115,0.35)' },
-  date:       { width: 46, color: FAINT, fontSize: 11 },
-  homeAway:   { width: 18, color: FAINT, fontSize: 11 },
-  logo:       { width: 16, height: 16 },
-  name:       { flex: 1, color: TEXT, fontSize: 12, fontWeight: '600' },
+  block: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  blockTitle: { color: FAINT, fontSize: 10, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
+  row:        { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, gap: 8, minWidth: 0 },
+  borderBottom: { borderBottomWidth: 1, borderBottomColor: 'rgba(94,103,115,0.28)' },
+  dateBox:    { width: 54, flexShrink: 0 },
+  date:       { color: FAINT, fontSize: 11, lineHeight: 14, fontWeight: '700' },
+  time:       { color: '#2d4a6b', fontSize: 9, lineHeight: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  homeAway:   { width: 18, color: FAINT, fontSize: 11, fontWeight: '800', textAlign: 'center', flexShrink: 0 },
+  logo:       { width: 18, height: 18, flexShrink: 0 },
+  logoFallback: { width: 18, height: 18, borderRadius: 9, backgroundColor: BORDER, flexShrink: 0 },
+  name:       { flex: 1, minWidth: 0, color: TEXT, fontSize: 12, lineHeight: 16, fontWeight: '700' },
   none:       { color: FAINT, fontSize: 12, paddingVertical: 6 },
 });
 
@@ -80,22 +102,10 @@ export default function UpcomingScheduleSection({ awayGames, homeGames, awayName
         <View style={styles.hdrLine} />
       </View>
 
-      {/* Two-column grid */}
-      <View style={styles.grid}>
-        {/* Away column */}
-        <View style={[styles.col, styles.colLeft]}>
-          <Text style={styles.colTitle} numberOfLines={1}>{awayName}</Text>
-          <ScheduleCol games={awayGames} />
-        </View>
-
-        {/* Divider */}
-        <View style={styles.divider} />
-
-        {/* Home column */}
-        <View style={styles.col}>
-          <Text style={styles.colTitle} numberOfLines={1}>{homeName}</Text>
-          <ScheduleCol games={homeGames} />
-        </View>
+      {/* Stacked phone layout: gives long opponent names room and avoids cramped columns. */}
+      <View style={styles.stack}>
+        <ScheduleBlock games={awayGames} teamName={awayName} />
+        <ScheduleBlock games={homeGames} teamName={homeName} />
       </View>
     </View>
   );
@@ -106,9 +116,5 @@ const styles = StyleSheet.create({
   hdrLine:  { flex: 1, height: 1, backgroundColor: 'rgba(113,113,122,0.3)' },
   hdrLabel: { color: FAINT, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' },
 
-  grid:     { flexDirection: 'row' },
-  col:      { flex: 1 },
-  colLeft:  { paddingRight: 6 },
-  divider:  { width: 1, backgroundColor: BORDER, marginHorizontal: 4 },
-  colTitle: { color: FAINT, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 4 },
+  stack:    { gap: 0 },
 });

@@ -189,11 +189,11 @@ function MiniCard({ game, onPress }: { game: NormalizedGame; onPress: () => void
       {/* Score row — only shown when scores are available */}
       {hasScore && (
         <View style={styles.miniAbbrRow}>
-          <Text style={[styles.miniScore, homeWon && styles.miniLoserScore]}>
+          <Text style={[styles.miniScore, homeWon && styles.miniLoserScore]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
             {game.awayScore ?? '–'}
           </Text>
           <View style={styles.miniDashCell} />
-          <Text style={[styles.miniScore, awayWon && styles.miniLoserScore]}>
+          <Text style={[styles.miniScore, awayWon && styles.miniLoserScore]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} allowFontScaling={false}>
             {game.homeScore ?? '–'}
           </Text>
         </View>
@@ -849,16 +849,16 @@ const styles = StyleSheet.create({
   miniSport:  { color: TEXT_FAINT, fontSize: 9, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 },
   // Logo row: [logoCell][dashCell][logoCell] — dash is vertically centered at logo level
   miniLogoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  miniLogoCell: { width: 28, alignItems: 'center' },
-  miniDashCell: { width: 20, alignItems: 'center', justifyContent: 'center' },
+  miniLogoCell: { width: 32, alignItems: 'center' },
+  miniDashCell: { width: 16, alignItems: 'center', justifyContent: 'center' },
   // Abbr/score rows reuse the same 3-column grid
   miniAbbrRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 3 },
   miniLogo:   { width: 28, height: 28 },
   miniLogoFallback: { width: 28, height: 28, borderRadius: 4, backgroundColor: '#1a2d4a', alignItems: 'center', justifyContent: 'center' },
   miniLogoText: { color: TEXT_FAINT, fontSize: 8, fontWeight: '700' },
-  miniAbbr:   { color: '#F2E6CF', fontSize: 10, fontWeight: '700', letterSpacing: 0.5, width: 28, textAlign: 'center' },
+  miniAbbr:   { color: '#F2E6CF', fontSize: 10, fontWeight: '700', letterSpacing: 0.5, width: 32, textAlign: 'center' },
   miniLoserAbbr: { color: 'rgb(63,79,98)' },
-  miniScore:  { color: '#F2E6CF', fontSize: 14, fontWeight: '800', width: 28, textAlign: 'center' },
+  miniScore:  { color: '#F2E6CF', fontSize: 12, lineHeight: 16, fontWeight: '800', width: 32, textAlign: 'center', fontVariant: ['tabular-nums'] },
   miniLoserScore: { color: 'rgb(63,79,98)' },
   miniDash:   { color: '#1e3050', fontSize: 14, fontWeight: '900', textAlign: 'center' },
   // Legacy — kept for safety but replaced by miniLogoRow/miniAbbrRow

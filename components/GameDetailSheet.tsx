@@ -331,9 +331,9 @@ export default function GameDetailSheet({ game, onClose }: Props) {
                   {hasScore ? (
                     <>
                       <View style={styles.scoreRow}>
-                        <Text style={[styles.scoreNum, hasScore && homeWon && styles.scoreLoser]}>{awayScore}</Text>
+                        <Text style={[styles.scoreNum, hasScore && homeWon && styles.scoreLoser]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} allowFontScaling={false}>{awayScore}</Text>
                         <Text style={styles.scoreDash}>–</Text>
-                        <Text style={[styles.scoreNum, hasScore && awayWon && styles.scoreLoser]}>{homeScore}</Text>
+                        <Text style={[styles.scoreNum, hasScore && awayWon && styles.scoreLoser]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} allowFontScaling={false}>{homeScore}</Text>
                       </View>
                       <View style={styles.statusRow}>
                         {isLive ? (
@@ -505,11 +505,11 @@ const styles = StyleSheet.create({
   winPct: { color: TEXT_FAINT, fontSize: 10 },
 
   // Score center
-  centerBlock: { alignItems: 'center', justifyContent: 'flex-start', paddingTop: 12, minWidth: 90, gap: 4 },
-  scoreRow: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
-  scoreNum: { color: TEXT, fontSize: 62, fontWeight: '900', letterSpacing: -1, lineHeight: 68, fontFamily: 'BarlowCondensed_900Black' },
+  centerBlock: { alignItems: 'center', justifyContent: 'flex-start', paddingTop: 12, width: 124, flexShrink: 0, gap: 4 },
+  scoreRow: { flexDirection: 'row', alignItems: 'baseline', gap: 1, flexWrap: 'nowrap' },
+  scoreNum: { color: TEXT, fontSize: 46, fontWeight: '900', letterSpacing: -0.6, lineHeight: 50, minWidth: 46, textAlign: 'center', fontFamily: 'BarlowCondensed_900Black', fontVariant: ['tabular-nums'] },
   scoreLoser: { color: LOSER },
-  scoreDash: { color: BORDER, fontSize: 28, fontWeight: '900', marginHorizontal: 2 },
+  scoreDash: { color: BORDER, fontSize: 22, fontWeight: '900', marginHorizontal: 1 },
   vsText: { color: '#3f3f46', fontSize: 28, fontWeight: '900' },
   kickoffTime: { color: TEXT, fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
   kickoffDate: { color: TEXT_FAINT, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8 },
