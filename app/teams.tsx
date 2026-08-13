@@ -20,7 +20,7 @@ const TEXT    = '#F2E6CF';
 const FAINT   = '#5F6773';
 const ACCENT  = '#D95C17';
 
-const MAP_ASPECT = 322 / 800;
+const MAP_ASPECT = 420 / 800; // taller aspect ratio for better phone readability
 const MIN_CARD_W = 88;
 const MIN_MAP_W = 280;
 const FALLBACK_MAP_W = Math.max(MIN_MAP_W, Math.round((Dimensions.get('window').width || 390) - 32));
@@ -131,7 +131,7 @@ function USMap({
     ? measuredWidth
     : (width > 64 ? width - 32 : FALLBACK_MAP_W);
   const mapW = Math.max(MIN_MAP_W, Math.round(availableWidth));
-  const mapH = Math.max(112, Math.round(mapW * MAP_ASPECT));
+  const mapH = Math.max(140, Math.round(mapW * MAP_ASPECT));
   const paths = useMemo(() => {
     try { return decodeTopo(TOPO_DATA, mapW, mapH); } catch { return []; }
   }, [mapW, mapH]);
@@ -161,19 +161,21 @@ function USMap({
           {paths.map(({ abbr, d }) => {
             const hasTeams = (teamsPerState[abbr] ?? 0) > 0;
             const isSelected = selectedState === abbr;
-            const fill = isSelected
-              ? 'rgba(217,92,23,0.35)'
-              : hasTeams
-              ? 'rgba(255,255,255,0.15)'
-              : 'rgba(255,255,255,0.03)';
-            const stroke = isSelected ? '#D95C17' : 'rgba(255,255,255,0.28)';
+            // Use explicit fill+fillOpacity to avoid Android rgba rendering issues
+            const fillColor = isSelected ? '#D95C17' : hasTeams ? '#ffffff' : '#8ab0d0';
+            const fillOp = isSelected ? 0.40 : hasTeams ? 0.20 : 0.07;
+            const strokeColor = isSelected ? '#D95C17' : hasTeams ? '#c8d8e8' : '#8ab0d0';
+            const strokeOp = isSelected ? 1.0 : hasTeams ? 0.65 : 0.40;
+            const strokeW = isSelected ? 2.0 : 1.0;
             return (
               <Path
                 key={abbr}
                 d={d}
-                fill={fill}
-                stroke={stroke}
-                strokeWidth={isSelected ? 2 : 0.5}
+                fill={fillColor}
+                fillOpacity={fillOp}
+                stroke={strokeColor}
+                strokeOpacity={strokeOp}
+                strokeWidth={strokeW}
                 onPress={() => hasTeams && onStateSelect(selectedState === abbr ? '' : abbr)}
               />
             );
@@ -533,7 +535,7 @@ const styles = StyleSheet.create({
 
   // Map
   mapWrapper: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
-  mapSizer: { width: '100%', minHeight: 112 },
+  mapSizer: { width: '100%', minHeight: 140 },
   mapContainer: {
     backgroundColor: 'rgba(14,26,49,0.8)',
     borderRadius: 12, overflow: 'hidden',

@@ -95,9 +95,12 @@ function getSeasonSummary(res: any, leagueLabel: string): SeasonSummary {
   else if (typeText.includes('off') || rawType === 4) phase = 'Offseason';
 
   if (typeof season.status === 'string') {
-    phase = season.status === 'playoffs'
-      ? 'Postseason'
-      : season.status.charAt(0).toUpperCase() + season.status.slice(1);
+    const s = season.status.toLowerCase();
+    if (s === 'playoffs' || s === 'postseason') phase = 'Postseason';
+    else if (s === 'pre' || s === 'preseason') phase = 'Preseason';
+    else if (s === 'off' || s === 'offseason') phase = 'Offseason';
+    else if (s === 'regular' || s === 'regular season') phase = 'Regular season';
+    else phase = season.status.charAt(0).toUpperCase() + season.status.slice(1);
   }
 
   const nextStart = season.nextStartApprox ? ` · next starts around ${season.nextStartApprox}` : '';
@@ -285,7 +288,7 @@ const styles = StyleSheet.create({
   safe:        { flex: 1, backgroundColor: BG },
   pageHeader:  { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6 },
   pageTitle:   { color: '#F2E6CF', fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  filterBar:   { borderBottomWidth: 1, borderBottomColor: BORDER, maxHeight: 52, flexGrow: 0 },
+  filterBar:   { borderBottomWidth: 1, borderBottomColor: BORDER, height: 52, flexGrow: 0, flexShrink: 0 },
   filterContent: { paddingHorizontal: 12, paddingRight: 20, paddingVertical: 8, gap: 8, flexDirection: 'row', alignItems: 'center' },
   pill:        { minWidth: 58, alignItems: 'center', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999, backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER, flexShrink: 0 },
   pillActive:  { backgroundColor: ACCENT, borderColor: ACCENT },
