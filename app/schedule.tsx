@@ -29,6 +29,14 @@ function toApiDate(dateStr: string): string {
   return dateStr.replace(/-/g, '');
 }
 
+function toLocalDateStr(d: Date): string | null {
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function formatSectionTitle(dateStr: string, todayStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
@@ -159,7 +167,7 @@ function mapEspnToScorpanionShape(raw: any, followedTeam: ProTeam): ScorpanionGa
 // Date extractor for the Scorpanion API's "MM/DD/YYYY HH:MM:SS" or ISO format
 function gameKickoffDate(kickoff: string): string | null {
   if (!kickoff) return null;
-  if (kickoff.includes('T') || kickoff.match(/^\d{4}-/)) return kickoff.split('T')[0];
+  if (kickoff.includes('T') || kickoff.match(/^\d{4}-/)) return toLocalDateStr(new Date(kickoff));
   const parts = kickoff.split(' ')[0]?.split('/');
   if (parts?.length === 3) {
     const [m, d, y] = parts;

@@ -10,7 +10,9 @@ import GameDetailSheet from '../components/GameDetailSheet';
 import AppHeader from '../components/AppHeader';
 import { fetchSchedule } from '../lib/api';
 import { normalizeGame, NormalizedGame } from '../lib/normalizeGame';
-import { BG, SURFACE, SURFACE2, BORDER, TEXT_FAINT, TEXT_MUTED, ACCENT } from '../constants/theme';
+import { useSportsData } from '../context/SportsDataContext';
+import { ALL_PRO_TEAMS, ProTeam } from '../lib/allProTeams';
+import { BG, SURFACE2, BORDER, TEXT_FAINT, TEXT_MUTED, ACCENT } from '../constants/theme';
 import type { ScorpanionGame } from '../lib/types';
 
 const DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -23,10 +25,15 @@ function toDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+function toLocalDateStr(d: Date): string | null {
+  if (Number.isNaN(d.getTime())) return null;
+  return toDateStr(d);
+}
+
 function gameKickoffDate(kickoff: string): string | null {
   if (!kickoff) return null;
   if (kickoff.includes('T') || kickoff.match(/^\d{4}-/)) {
-    return kickoff.split('T')[0];
+    return toLocalDateStr(new Date(kickoff));
   }
   const parts = kickoff.split(' ')[0]?.split('/');
   if (parts?.length === 3) {
@@ -34,6 +41,13 @@ function gameKickoffDate(kickoff: string): string | null {
     return `${y}-${(m ?? '').padStart(2,'0')}-${(d ?? '').padStart(2,'0')}`;
   }
   return null;
+}
+
+function gameMatchesTeam(game: NormalizedGame, team: ProTeam): boolean {
+  if (!team.espnId) return game.sportLabel === team.league;
+  if (game.seattleEspnId) return game.seattleEspnId === team.espnId;
+  return game.sportLabel === team.league &&
+    (game.awayTeam.id === team.espnId || game.homeTeam.id === team.espnId);
 }
 
 function addDays(dateStr: string, n: number): string {
@@ -49,6 +63,7 @@ function formatDayLabel(dateStr: string) {
 }
 
 export default function CalendarScreen() {
+  const { followedTeams } = useSportsData();
   const now = new Date();
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
@@ -88,24 +103,37 @@ export default function CalendarScreen() {
     return () => { mounted = false; };
   }, []);
 
+  const filterableTeams = React.useMemo(() =>
+    followedTeams
+      .map(id => ALL_PRO_TEAMS.find(t => t.id === id))
+      .filter((t): t is ProTeam => !!t),
+    [followedTeams]
+  );
+
+  const filteredGames = React.useMemo(() => {
+    if (filterableTeams.length === 0) return [];
+    return allGames.filter(raw => {
+      const norm = normalizeGame(raw);
+      return filterableTeams.some(team => gameMatchesTeam(norm, team));
+    });
+  }, [allGames, filterableTeams]);
+
   // Games for a given date
   const gamesForDate = React.useCallback((date: string): NormalizedGame[] => {
-    return allGames
+    return filteredGames
       .filter((g) => gameKickoffDate(g.kickoff) === date)
       .map(normalizeGame);
-  }, [allGames]);
-
-  const dayGames = React.useMemo(() => gamesForDate(selectedDate), [gamesForDate, selectedDate]);
+  }, [filteredGames]);
 
   // Dates with games (for dots)
   const gameDates = React.useMemo(() => {
     const set = new Set<string>();
-    for (const g of allGames) {
+    for (const g of filteredGames) {
       const d = gameKickoffDate(g.kickoff);
       if (d) set.add(d);
     }
     return set;
-  }, [allGames]);
+  }, [filteredGames]);
 
   // Open popup with slide-up animation
   const openPopup = (date: string) => {

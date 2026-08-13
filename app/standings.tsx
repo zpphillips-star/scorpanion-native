@@ -110,7 +110,7 @@ export default function StandingsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <AppHeader />
+      <AppHeader hideFilter />
 
       {/* League picker */}
       <ScrollView

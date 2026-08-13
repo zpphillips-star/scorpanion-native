@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Image,
-  TextInput, StyleSheet, Dimensions,
+  TextInput, StyleSheet, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, G } from 'react-native-svg';
@@ -20,11 +20,8 @@ const TEXT    = '#F2E6CF';
 const FAINT   = '#5F6773';
 const ACCENT  = '#D95C17';
 
-const WIN_W = Dimensions.get('window').width;
-const MAP_W = WIN_W - 32;
-const MAP_H = Math.round(MAP_W * 322 / 800);
-const SCALE_X = MAP_W / 975;
-const SCALE_Y = (MAP_H / 610);
+const MAP_ASPECT = 322 / 800;
+const MIN_CARD_W = 88;
 
 // ─── FIPS → state abbr ────────────────────────────────────────────────────────
 
@@ -43,7 +40,7 @@ const FIPS_TO_ABBR: Record<string, string> = {
 
 interface StatePath { fips: string; abbr: string; d: string }
 
-function decodeTopo(topo: any): StatePath[] {
+function decodeTopo(topo: any, mapW: number, mapH: number): StatePath[] {
   const sx = topo.transform.scale[0];
   const sy = topo.transform.scale[1];
   const tx = topo.transform.translate[0];
@@ -65,7 +62,7 @@ function decodeTopo(topo: any): StatePath[] {
       const arcPts = isRev ? [...decoded[~idx]].reverse() : decoded[idx];
       const start = pts.length === 0 ? 0 : 1;
       for (let i = start; i < arcPts.length; i++) {
-        pts.push([arcPts[i][0] * SCALE_X, arcPts[i][1] * SCALE_Y]);
+        pts.push([arcPts[i][0] * (mapW / 975), arcPts[i][1] * (mapH / 610)]);
       }
     }
     if (pts.length === 0) return '';
@@ -92,10 +89,6 @@ function decodeTopo(topo: any): StatePath[] {
 // ─── Decode topojson at module level (synchronous, no async needed) ───────────
 
 const TOPO_DATA = require('../assets/states-10m.json');
-const STATIC_PATHS: StatePath[] = (() => {
-  try { return decodeTopo(TOPO_DATA); } catch { return []; }
-})();
-
 // ─── US Map component ─────────────────────────────────────────────────────────
 
 function USMap({
@@ -107,8 +100,12 @@ function USMap({
   onStateSelect: (abbr: string) => void;
   teamsPerState: Record<string, number>;
 }) {
-  // Paths are pre-decoded at module load — no async, no spinner, no CDN fallback
-  const paths = STATIC_PATHS;
+  const { width } = useWindowDimensions();
+  const mapW = Math.max(1, Math.round(width - 32));
+  const mapH = Math.max(1, Math.round(mapW * MAP_ASPECT));
+  const paths = useMemo(() => {
+    try { return decodeTopo(TOPO_DATA, mapW, mapH); } catch { return []; }
+  }, [mapW, mapH]);
 
   if (paths.length === 0) {
     return (
@@ -119,8 +116,8 @@ function USMap({
   }
 
   return (
-    <View style={styles.mapContainer}>
-      <Svg width={MAP_W} height={MAP_H} viewBox={`0 0 ${MAP_W} ${MAP_H}`}>
+      <View style={[styles.mapContainer, { width: mapW, height: mapH }]}>
+        <Svg width={mapW} height={mapH} viewBox={`0 0 ${mapW} ${mapH}`}>
         <G>
           {paths.map(({ abbr, d }) => {
             const hasTeams = (teamsPerState[abbr] ?? 0) > 0;
@@ -180,6 +177,8 @@ const SPORT_TABS = [
 
 export default function TeamsScreen() {
   const { toggleFollowTeam, isFollowing } = useSportsData();
+  const { width } = useWindowDimensions();
+  const cardWidth = Math.max(MIN_CARD_W, Math.floor((width - 32 - 16) / 3));
   const [activeTab, setActiveTab] = useState('ALL');
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [selectedStateTeamId, setSelectedStateTeamId] = useState<string | null>(null);
@@ -397,6 +396,7 @@ export default function TeamsScreen() {
                   key={team.id}
                   team={team}
                   followed
+                  cardWidth={cardWidth}
                   onPress={() => toggleFollowTeam(team.id)}
                 />
               ))}
@@ -418,6 +418,7 @@ export default function TeamsScreen() {
                   key={team.id}
                   team={team}
                   followed={isFollowing(team.id)}
+                  cardWidth={cardWidth}
                   onPress={() => toggleFollowTeam(team.id)}
                 />
               ))}
@@ -439,10 +440,10 @@ export default function TeamsScreen() {
 
 // ─── TeamCard component ───────────────────────────────────────────────────────
 
-function TeamCard({ team, followed, onPress }: { team: ProTeam; followed: boolean; onPress: () => void }) {
+function TeamCard({ team, followed, cardWidth, onPress }: { team: ProTeam; followed: boolean; cardWidth: number; onPress: () => void }) {
   return (
     <TouchableOpacity
-      style={[styles.teamCard, followed && styles.teamCardFollowed]}
+      style={[styles.teamCard, { width: cardWidth }, followed && styles.teamCardFollowed]}
       onPress={onPress}
       activeOpacity={0.75}
     >
@@ -466,8 +467,6 @@ function TeamCard({ team, followed, onPress }: { team: ProTeam; followed: boolea
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-
-const CARD_W = (WIN_W - 32 - 16) / 3; // 3 cols, 16px padding each side, 8px gaps
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
@@ -495,7 +494,6 @@ const styles = StyleSheet.create({
   // Map
   mapWrapper: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
   mapContainer: {
-    width: MAP_W, height: MAP_H,
     backgroundColor: 'rgba(14,26,49,0.8)',
     borderRadius: 12, overflow: 'hidden',
     borderWidth: 1, borderColor: BORDER,
@@ -643,7 +641,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, gap: 8,
   },
   teamCard: {
-    width: CARD_W,
     alignItems: 'center', gap: 6,
     padding: 10, borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.03)',
