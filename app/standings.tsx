@@ -14,7 +14,7 @@ import { fetchStandings } from '../lib/api';
 import AppHeader from '../components/AppHeader';
 import {
   BG, SURFACE, SURFACE2, SURFACE3, BORDER,
-  TEXT, TEXT_MUTED, TEXT_FAINT, ACCENT, WIN, LOSS,
+  TEXT, TEXT_MUTED, TEXT_FAINT, ACCENT,
 } from '../constants/theme';
 
 const LEAGUES = [
@@ -22,14 +22,14 @@ const LEAGUES = [
   { label: 'NBA',  sport: 'basketball',  league: 'nba' },
   { label: 'NFL',  sport: 'football',    league: 'nfl' },
   { label: 'NHL',  sport: 'hockey',      league: 'nhl' },
-  { label: 'MLS',  sport: 'soccer',      league: 'mls' },
+  { label: 'MLS',  sport: 'soccer',      league: 'usa.1' },
   { label: 'WNBA', sport: 'basketball',  league: 'wnba' },
   { label: 'NWSL', sport: 'soccer',      league: 'usa.nwsl' },
 ];
 
 // Flatten the scorpanion standings API response into a list of teams + division headers
-function flattenStandings(res: any): Array<{type: 'header'; name: string} | {type: 'team'; entry: any}> {
-  const rows: Array<{type: 'header'; name: string} | {type: 'team'; entry: any}> = [];
+function flattenStandings(res: any): ({type: 'header'; name: string} | {type: 'team'; entry: any})[] {
+  const rows: ({type: 'header'; name: string} | {type: 'team'; entry: any})[] = [];
   if (!res) return rows;
 
   // Scorpanion format: { divisions: [{name, entries: [...]}] }
@@ -63,6 +63,48 @@ function flattenStandings(res: any): Array<{type: 'header'; name: string} | {typ
   return rows;
 }
 
+type SeasonSummary = {
+  label: string;
+  phase: string;
+  detail: string;
+};
+
+function getSeasonSummary(res: any, leagueLabel: string): SeasonSummary {
+  const season =
+    res?.season ??
+    res?.leagues?.[0]?.season ??
+    res?.children?.[0]?.standings ??
+    res?.standings ??
+    {};
+
+  const label =
+    season.label ??
+    season.displayName ??
+    season.seasonDisplayName ??
+    season.name ??
+    `${leagueLabel} season`;
+
+  const rawStatus = season.status ?? season.type?.name ?? season.type?.description ?? season.seasonType ?? season.type;
+  const rawType = typeof rawStatus === 'object' && rawStatus !== null
+    ? rawStatus.name ?? rawStatus.description ?? rawStatus.id ?? rawStatus.type
+    : rawStatus;
+  const typeText = String(rawType ?? '').toLowerCase();
+  let phase = 'Regular season';
+  if (typeText.includes('pre') || rawType === 1) phase = 'Preseason';
+  else if (typeText.includes('post') || typeText.includes('playoff') || rawType === 3) phase = 'Postseason';
+  else if (typeText.includes('off') || rawType === 4) phase = 'Offseason';
+
+  if (typeof season.status === 'string') {
+    phase = season.status === 'playoffs'
+      ? 'Postseason'
+      : season.status.charAt(0).toUpperCase() + season.status.slice(1);
+  }
+
+  const nextStart = season.nextStartApprox ? ` · next starts around ${season.nextStartApprox}` : '';
+  const detail = `${phase}${nextStart}`;
+  return { label, phase, detail };
+}
+
 // Get a stat value from a scorpanion or ESPN standings entry
 function getStat(entry: any, names: string[]): string {
   for (const name of names) {
@@ -83,16 +125,30 @@ function getStat(entry: any, names: string[]): string {
 export default function StandingsScreen() {
   const [selected, setSelected] = useState(LEAGUES[0]);
   const [rows, setRows] = useState<ReturnType<typeof flattenStandings>>([]);
+  const [season, setSeason] = useState<SeasonSummary>(() => getSeasonSummary(null, LEAGUES[0].label));
   const [loading, setLoading] = useState(true);
+  const [errorText, setErrorText] = useState('');
   const [sortKey, setSortKey] = useState<'W' | 'L' | 'PCT' | null>(null);
   const [sortAsc, setSortAsc] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     setLoading(true);
+    setErrorText('');
     fetchStandings(selected.sport, selected.league)
-      .then((res) => { if (mounted) setRows(flattenStandings(res)); })
-      .catch(() => { if (mounted) setRows([]); })
+      .then((res) => {
+        if (mounted) {
+          setRows(flattenStandings(res));
+          setSeason(getSeasonSummary(res, selected.label));
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setRows([]);
+          setSeason(getSeasonSummary(null, selected.label));
+          setErrorText(`${selected.label} standings are unavailable right now.`);
+        }
+      })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [selected]);
@@ -132,13 +188,22 @@ export default function StandingsScreen() {
         ))}
       </ScrollView>
 
+      <View style={styles.seasonCard}>
+        <View style={styles.seasonAccent} />
+        <View style={styles.seasonTextBlock}>
+          <Text style={styles.seasonKicker}>{selected.label} STANDINGS</Text>
+          <Text style={styles.seasonTitle} numberOfLines={1}>{season.label}</Text>
+          <Text style={styles.seasonDetail} numberOfLines={1}>{season.detail}</Text>
+        </View>
+      </View>
+
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={ACCENT} />
         </View>
       ) : rows.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.emptyText}>No standings available</Text>
+          <Text style={styles.emptyText}>{errorText || 'No standings available'}</Text>
         </View>
       ) : (
         <>
@@ -220,12 +285,30 @@ const styles = StyleSheet.create({
   safe:        { flex: 1, backgroundColor: BG },
   pageHeader:  { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6 },
   pageTitle:   { color: '#F2E6CF', fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  filterBar:   { borderBottomWidth: 1, borderBottomColor: BORDER, maxHeight: 48 },
-  filterContent: { paddingHorizontal: 12, paddingVertical: 8, gap: 6, flexDirection: 'row' },
-  pill:        { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 999, backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER },
+  filterBar:   { borderBottomWidth: 1, borderBottomColor: BORDER, maxHeight: 52, flexGrow: 0 },
+  filterContent: { paddingHorizontal: 12, paddingRight: 20, paddingVertical: 8, gap: 8, flexDirection: 'row', alignItems: 'center' },
+  pill:        { minWidth: 58, alignItems: 'center', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999, backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER, flexShrink: 0 },
   pillActive:  { backgroundColor: ACCENT, borderColor: ACCENT },
   pillText:    { color: TEXT_FAINT, fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
   pillTextActive: { color: '#fff' },
+  seasonCard: {
+    marginHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  seasonAccent: { width: 4, height: 42, borderRadius: 4, backgroundColor: ACCENT },
+  seasonTextBlock: { flex: 1, minWidth: 0 },
+  seasonKicker: { color: TEXT_FAINT, fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
+  seasonTitle: { color: TEXT, fontSize: 16, fontWeight: '800', marginTop: 2 },
+  seasonDetail: { color: TEXT_MUTED, fontSize: 12, fontWeight: '600', marginTop: 2 },
   center:      { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText:   { color: TEXT_FAINT, fontSize: 14 },
   tableHeader: {

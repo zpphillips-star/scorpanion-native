@@ -33,11 +33,34 @@ export async function fetchStandings(sport?: string, league?: string) {
   if (sport) params.set('sport', sport);
   if (league) params.set('league', league);
   const url = `${API_BASE}/api/standings?${params}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  setCached(key, data, TTL.STANDINGS);
-  return data;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const hasData =
+      (Array.isArray(data?.divisions) && data.divisions.length > 0) ||
+      (Array.isArray(data?.conferences) && data.conferences.length > 0) ||
+      (Array.isArray(data?.children) && data.children.length > 0) ||
+      (Array.isArray(data?.standings?.entries) && data.standings.entries.length > 0);
+    if (hasData) {
+      setCached(key, data, TTL.STANDINGS);
+      return data;
+    }
+    throw new Error('empty standings response');
+  } catch (primaryError) {
+    if (!sport || !league) throw primaryError;
+    const fallbackUrl = `https://site.api.espn.com/apis/v2/sports/${sport}/${league}/standings`;
+    const fallbackRes = await fetch(fallbackUrl, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'Scorpanion/1.0',
+      },
+    });
+    if (!fallbackRes.ok) throw primaryError;
+    const fallbackData = await fallbackRes.json();
+    setCached(key, fallbackData, TTL.STANDINGS);
+    return fallbackData;
+  }
 }
 
 export async function fetchBoxscore(gameId: string, sport?: string) {

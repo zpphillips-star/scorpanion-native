@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Image,
-  TextInput, StyleSheet, useWindowDimensions,
+  TextInput, StyleSheet, useWindowDimensions, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, G } from 'react-native-svg';
@@ -22,6 +22,8 @@ const ACCENT  = '#D95C17';
 
 const MAP_ASPECT = 322 / 800;
 const MIN_CARD_W = 88;
+const MIN_MAP_W = 280;
+const FALLBACK_MAP_W = Math.max(MIN_MAP_W, Math.round((Dimensions.get('window').width || 390) - 32));
 
 // ─── FIPS → state abbr ────────────────────────────────────────────────────────
 
@@ -55,6 +57,29 @@ function decodeTopo(topo: any, mapW: number, mapH: number): StatePath[] {
     });
   });
 
+  function projectPoint(lonRaw: number, lat: number): [number, number] {
+    const lon = lonRaw > 0 ? lonRaw - 360 : lonRaw;
+
+    // states-10m stores longitude/latitude. The old renderer treated those as
+    // already-projected pixels, which put most paths off-canvas on Android. Use
+    // deterministic phone-friendly USA insets instead of silently drawing blank.
+    if (lat > 50 && lon < -125) {
+      const x = ((lon + 180) / 50) * (mapW * 0.24) + mapW * 0.04;
+      const y = ((72 - lat) / 22) * (mapH * 0.24) + mapH * 0.68;
+      return [x, y];
+    }
+
+    if (lat < 25 && lon < -140) {
+      const x = ((lon + 161) / 8) * (mapW * 0.14) + mapW * 0.34;
+      const y = ((23 - lat) / 6) * (mapH * 0.12) + mapH * 0.82;
+      return [x, y];
+    }
+
+    const x = ((lon + 125) / 59) * (mapW * 0.78) + mapW * 0.16;
+    const y = ((50 - lat) / 26) * (mapH * 0.72) + mapH * 0.06;
+    return [x, y];
+  }
+
   function ringToD(ring: number[]): string {
     const pts: [number, number][] = [];
     for (const idx of ring) {
@@ -62,7 +87,7 @@ function decodeTopo(topo: any, mapW: number, mapH: number): StatePath[] {
       const arcPts = isRev ? [...decoded[~idx]].reverse() : decoded[idx];
       const start = pts.length === 0 ? 0 : 1;
       for (let i = start; i < arcPts.length; i++) {
-        pts.push([arcPts[i][0] * (mapW / 975), arcPts[i][1] * (mapH / 610)]);
+        pts.push(projectPoint(arcPts[i][0], arcPts[i][1]));
       }
     }
     if (pts.length === 0) return '';
@@ -101,22 +126,36 @@ function USMap({
   teamsPerState: Record<string, number>;
 }) {
   const { width } = useWindowDimensions();
-  const mapW = Math.max(1, Math.round(width - 32));
-  const mapH = Math.max(1, Math.round(mapW * MAP_ASPECT));
+  const [measuredWidth, setMeasuredWidth] = useState(0);
+  const availableWidth = measuredWidth > 0
+    ? measuredWidth
+    : (width > 64 ? width - 32 : FALLBACK_MAP_W);
+  const mapW = Math.max(MIN_MAP_W, Math.round(availableWidth));
+  const mapH = Math.max(112, Math.round(mapW * MAP_ASPECT));
   const paths = useMemo(() => {
     try { return decodeTopo(TOPO_DATA, mapW, mapH); } catch { return []; }
   }, [mapW, mapH]);
 
   if (paths.length === 0) {
     return (
-      <View style={[styles.mapContainer, { alignItems: 'center', justifyContent: 'center' }]}>
-        <Text style={{ color: FAINT, fontSize: 12 }}>Map unavailable</Text>
+      <View
+        style={styles.mapSizer}
+        onLayout={(event) => setMeasuredWidth(Math.round(event.nativeEvent.layout.width))}
+      >
+        <View style={[styles.mapContainer, styles.mapUnavailable, { height: mapH }]}>
+          <Text style={styles.mapUnavailableTitle}>Map unavailable</Text>
+          <Text style={styles.mapUnavailableText}>Team list still works below.</Text>
+        </View>
       </View>
     );
   }
 
   return (
-      <View style={[styles.mapContainer, { width: mapW, height: mapH }]}>
+    <View
+      style={styles.mapSizer}
+      onLayout={(event) => setMeasuredWidth(Math.round(event.nativeEvent.layout.width))}
+    >
+      <View style={[styles.mapContainer, { height: mapH }]}>
         <Svg width={mapW} height={mapH} viewBox={`0 0 ${mapW} ${mapH}`}>
         <G>
           {paths.map(({ abbr, d }) => {
@@ -142,6 +181,7 @@ function USMap({
         </G>
       </Svg>
     </View>
+  </View>
   );
 }
 
@@ -493,11 +533,19 @@ const styles = StyleSheet.create({
 
   // Map
   mapWrapper: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  mapSizer: { width: '100%', minHeight: 112 },
   mapContainer: {
     backgroundColor: 'rgba(14,26,49,0.8)',
     borderRadius: 12, overflow: 'hidden',
     borderWidth: 1, borderColor: BORDER,
   },
+  mapUnavailable: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  mapUnavailableTitle: { color: TEXT, fontSize: 13, fontWeight: '800' },
+  mapUnavailableText: { color: FAINT, fontSize: 11, marginTop: 4 },
   clearState: {
     alignSelf: 'flex-end', marginTop: 6,
     paddingHorizontal: 10, paddingVertical: 4,
